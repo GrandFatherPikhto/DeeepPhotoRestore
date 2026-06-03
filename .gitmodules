@@ -1,6 +1,3 @@
-[submodule "NAFNet"]
-	path = NAFNet
-	url = https://github.com/megvii-research/NAFNet.git
 [submodule "modules/NAFNet"]
 	path = modules/NAFNet
 	url = https://github.com/megvii-research/NAFNet

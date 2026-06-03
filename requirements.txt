@@ -15,7 +15,6 @@ rawpy
 exifread
 scikit-image
 PyQt6
-install
 tbparse
 pandas 
 matplotlib
