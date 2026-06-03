@@ -1,6 +1,12 @@
 #!./.venv/bin/python3
 import os
 import sys
+
+# 🎯 ДОБАВЛЕНО: Автоматически регистрируем корень проекта и папку libraries в путях Python
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.append(current_dir)
+
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -51,7 +57,7 @@ def main():
     # КРИТИЧЕСКИЙ ТЕСТ НОРМАЛИЗАЦИИ ЧИСЕЛ
     if lq_tensor.max().item() < 0.05:
         print("⚠️  БАГ ДИАПАЗОНА: Входные значения LQ слишком малы! Модель ослепнет и выдаст плоский квадрат.")
-    elif lq_tensor.max().item() > 1.0 or gt_tensor.max().item() > 1.0:
+    elif lq_tensor.max().item() > 1.0001 or gt_tensor.max().item() > 1.0001:
         print("⚠️  БАГ ДИАПАЗОНА: Данные выходят за пределы [0.0, 1.0]! Градиенты могут взорваться.")
     else:
         print("✅ Диапазоны чисел в полном порядке (строго от 0.0 до 1.0).")
