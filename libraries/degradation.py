@@ -1,0 +1,51 @@
+import numpy as np
+import cv2
+
+def create_psf_kernel(sigma, size=15):
+    """Генерация ядра ЧКХ объектива через Гауссиану"""
+    ax = np.linspace(-(size // 2), size // 2, size)
+    xx, yy = np.meshgrid(ax, ax)
+    kernel = np.exp(-(xx**2 + yy**2) / (2.0 * sigma**2))
+    return kernel / np.sum(kernel)
+
+def add_correlated_noise(img, snr_db, psf_kernel):
+    """Добавление шума АБГШ, скоррелированного с ЧКХ объектива"""
+    signal_power = np.mean(img ** 2)
+    noise_power = signal_power / (10 ** (snr_db / 10.0))
+    white_noise = np.random.normal(0, np.sqrt(noise_power), img.shape)
+    # Идеальная линейная свертка без обрезания отрицательных хвостов
+    correlated_noise = cv2.filter2D(white_noise, -1, psf_kernel)
+    return np.clip(img + correlated_noise, 0, None)
+
+def add_uncorrelated_noise(img, snr_db):
+    """Добавление стандартного некоррелированного шума"""
+    signal_power = np.mean(img ** 2)
+    noise_power = signal_power / (10 ** (snr_db / 10.0))
+    noise = np.random.normal(0, np.sqrt(noise_power), img.shape)
+    return np.clip(img + noise, 0, None)
+
+def apply_bayer_mask(rgb, pattern='RGGB'):
+    """Наложение маски Байера для Nikon D600"""
+    h, w, _ = rgb.shape
+    bayer = np.zeros((h, w), dtype=rgb.dtype)
+    bayer[0::2, 0::2] = rgb[0::2, 0::2, 0]   # R
+    bayer[0::2, 1::2] = rgb[0::2, 1::2, 1]   # G1
+    bayer[1::2, 0::2] = rgb[1::2, 0::2, 1]   # G2
+    bayer[1::2, 1::2] = rgb[1::2, 1::2, 2]   # B
+    return bayer
+
+def extract_bayer_subchannels(bayer_2d):
+    """
+    🎯 ИСПРАВЛЕНО: Раскладывает 1-канальную мозаику в 4 подканала RGGB.
+    Гарантирует четность размеров. На выходе: массив [H/2, W/2, 4]
+    """
+    h, w = bayer_2d.shape
+    h = h - (h % 2)
+    w = w - (w % 2)
+    bayer_2d = bayer_2d[:h, :w]
+
+    r  = bayer_2d[0::2, 0::2]
+    g1 = bayer_2d[0::2, 1::2]
+    g2 = bayer_2d[1::2, 0::2]
+    b  = bayer_2d[1::2, 1::2]
+    return np.stack([r, g1, g2, b], axis=2)

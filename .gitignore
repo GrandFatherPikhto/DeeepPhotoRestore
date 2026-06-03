@@ -1,0 +1,49 @@
+# Игнорируем PDF-файлы (ваше требование)
+*.pdf
+
+# Python (кэш и скомпилированные файлы)
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Среды разработки и виртуальные окружения (Venv / Conda)
+.venv/
+venv/
+env/
+ENV/
+.env
+.ipynb_checkpoints/
+.vscode/
+.idea/
+
+# Логи и результаты обучения PyTorch / BasicSR
+experiments/
+tb_logger/
+wandb/
+*.log
+# Директория с логами
+logs
+
+# Файлы операционной системы
+.DS_Store
+Thumbs.db
+
+# Dataset's тоже игнорим
+modules
+datasets
+checkpoints
+jpeg_images
+nef_images
+old
+trained
+restored_single
+
+# NAFNet
+NAFNet
+
+# *zip
+*.zip
+
+# *.png
+*.png

@@ -1,0 +1,58 @@
+{
+  "depth": null,
+  "ignore_names": [
+    ".git",
+    "__pycache__",
+    ".venv",
+    "node_modules",
+    "treeout.py",
+    "tree_config.json",
+    "tree_config.yaml",
+    ".treeignore"
+  ],
+  "only_dirs": false,
+  "output_file": "docs/TREE.md",
+  "ignore_paths": [
+    "old",
+    "doc",
+    "NAFNet/LICENSE",
+    "NAFNet/VERSION",
+    "NAFNet/.eggs",
+    "NAFNet/LICENSE",
+    "NAFNet/VERSION",
+    "NAFNet/basicsr",
+    "NAFNet/basicsr.egg-info",
+    "NAFNet/cog.yaml",
+    "NAFNet/datasets",
+    "NAFNet/demo",
+    "NAFNet/docs",
+    "NAFNet/figures",
+    "NAFNet/logs",
+    "NAFNet/predict.py",
+    "NAFNet/readme.md",
+    "NAFNet/requirements.txt",
+    "NAFNet/scripts",
+    "NAFNet/setup.cfg",
+    "NAFNet/setup.py",
+    "NAFNet/tb_logger"
+  ],
+  "ignore_extensions": [],
+  "ignore_masks": [
+    "RAISE*",
+    "*.pdf",
+    "*.pyc"
+  ],
+  "allow_only": {
+    "NAFNet/options": ["train"],
+    "NAFNet/options/train": ["Tanahen"]
+  },
+  "descriptions": {
+    "NAFNet": "Основной репозиторий архитектуры NAFNet",
+    "NAFNet/basicsr": "Фреймворк для восстановления изображений (Super-Resolution)",
+    "NAFNet/cog.yaml": "Конфигурация для деплоя модели в контейнер Replicate/Cog",
+    "NAFNet/experiments": "Логи и веса обученных моделей по итогам экспериментов",
+    "doc": "Техническая документация проекта",
+    "tree_config.json": "Конфигурация генератора структуры проекта",
+    "NAFNet/options/train/Tanahen/train_NAFNet_JPEG.yml": "Настройки обучения"
+  }  
+}

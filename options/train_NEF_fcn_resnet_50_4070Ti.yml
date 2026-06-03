@@ -1,0 +1,42 @@
+# Общие настройки RAW эксперимента
+name: NEF-FCN-Resnet-50-4070Ti
+manual_seed: 42
+
+path:
+  source_images_dir: "nef_files"                      # Указываем твою новую папку!
+  resume_path: "checkpoints/resume_fcn_resnet_50_nef.pth" # Отдельный чекпоинт для RAW
+
+datasets:
+  train:
+    name: NEF_Train_Dataset
+    type: CustomNEFPairDataset                        # Наш кастомный тип загрузчика
+    dataroot_gt: dataset_ready_nef/train/hq_targets   # Новая папка, чтобы не затереть JPEG
+    dataroot_lq: dataset_ready_nef/train/lq_inputs   
+    batch_size_per_gpu: 4                             # RAW картинки тяжелее, батч поменьше
+    auto_resume: true         
+    save_checkpoint_epoch: 1  
+
+  val:
+    name: NEF_Val_Dataset
+    dataroot_gt: dataset_ready_nef/test/hq_targets
+    dataroot_lq: dataset_ready_nef/test/lq_inputs
+
+# Настройки для генератора шума
+process_data:
+  downscale_factor: 1
+  noise:
+    add: true
+    snr_db: 25
+    correlated: true
+    psf_sigma: 1.5
+
+# Внутренние настройки модели (arch_file НЕ указываем, сработает заглушка, но на 4 канала!)
+network_g:
+  type: fcn_resnet50
+  num_in_ch: 4                                        # КРИТИЧНО: 4 канала на входе (RGGB)
+  num_out_ch: 3                                       # 3 канала на выходе (RGB)
+
+train:
+  num_epochs: 20
+  optim_g:
+    lr: !!float 2e-4

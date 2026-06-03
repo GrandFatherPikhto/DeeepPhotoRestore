@@ -1,0 +1,44 @@
+# ⚙️ Общие настройки эксперимента
+name: JPEG-FCN-Resnet-50
+manual_seed: 42
+train_ratio: 0.5                                  # 🎯 Перенесено наверх, чтобы скрипт prepare_dataset.py увидел пропорцию!
+
+path:
+  # 🎯 ЕДИНСТВЕННОЕ МЕСТО ДЛЯ ПУТЕЙ:
+  source_images_dir: "/home/grand/Images/Flat-field/NEF/output_jpg"  # Папка с исходными чистыми картинками
+  dataset_root: "datasets/jpeg_fcn"               # Базовая папка для сгенерированного датасета
+  resume_path: "checkpoints/resume_jpeg_fcn_resnet_50.pth" # Файл для весов модели и Ctrl+C
+
+# 📦 Настройки датасета
+datasets:
+  train:
+    type: PairedImageDataset                        # Режим JPEG
+    batch_size_per_gpu: 8
+    auto_resume: true                               # Подхватывать обучение при перезапуске
+    save_checkpoint_epoch: 10                       # Автосохранение каждые 10 эпох
+
+# 🧠 Настройки нейросети (Без arch_file включится проверочная fcn_resnet50)
+network_g:
+  type: NAFNet
+  num_in_ch: 3                                      # RGB на входе
+  num_out_ch: 3                                     # RGB на выходе
+
+# 🛠️ Настройки портилки по умолчанию (чтобы prepare_dataset.py не падал без этой секции)
+process_data:
+  downscale_factor: 1
+  jpeg_quality: 40
+  noise:
+    add: false
+
+# 🚀 Параметры обучения
+train:
+  num_epochs: 500
+  optim_g:
+    lr: !!float 1e-3
+  scheduler:
+    eta_min: !!float 1e-7                           # Минимальный порог LR для CosineAnnealingLR
+
+# 📊 Настройки логирования
+logger:
+  print_freq: 2
+  use_tb_logger: true                               # Включаем TensorBoard графики!

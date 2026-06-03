@@ -1,0 +1,40 @@
+# ⚙️ Общие настройки RAW эксперимента
+name: NEF-NAFNet-4070Ti
+manual_seed: 42
+
+path:
+  # 🎯 ЕДИНСТВЕННОЕ МЕСТО ДЛЯ ПУТЕЙ:
+  source_images_dir: "nef_images"                    # Папка с твоими .NEF от Nikon D600
+  dataset_root: "datasets/nef_ready"                # Изолированная папка для RAW-датасета
+  resume_path: "checkpoints/resume_nef_nafnet.pth"  # Чистый файл для весов NAFNet
+
+# 📦 Настройки датасета
+datasets:
+  train:
+    type: CustomNEFPairDataset                      # Наш специализированный NEF-лоадер
+    batch_size_per_gpu: 4                           # RAW картинки тяжелее, батч поменьше
+    auto_resume: true         
+    save_checkpoint_epoch: 10                       # Сохраняем веса каждые 10 эпох, чтобы не спамить диск
+
+# 🧠 Настройки оригинальной нейросети NAFNet из репозитория
+network_g:
+  type: NAFNet
+  arch_file: "modules/NAFNet/basicsr/models/archs/NAFNet_arch.py" # Фабрика сама пойдет сюда
+  class_name: "NAFNet"
+  num_in_ch: 4                                      # КРИТИЧНО: 4 канала матрицы Баера (RGGB)
+  num_out_ch: 3                                     # 3 канала на выходе (Цветной RGB)
+  width: 32
+  enc_blk_nums: [2, 2, 4, 8]
+  middle_blk_num: 12
+  dec_blk_nums: [2, 2, 2, 2]
+
+# 🚀 Параметры обучения (Увеличили число эпох для глубокого обучения)
+train:
+  num_epochs: 200                                  # Выставляем на ночь для крутого результата
+  optim_g:
+    lr: !!float 2e-4                                # Для RAW берем шаг чуть поменьше
+
+# Настройки логирования
+logger:
+  print_freq: 2
+  use_tb_logger: true   # ← МЕНЯЕМ С FALSE НА TRUE, чтобы включить графики!

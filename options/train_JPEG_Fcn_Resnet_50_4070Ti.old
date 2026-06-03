@@ -1,0 +1,105 @@
+# Общие настройки
+name: JPEG-FCN-Resnet-50-4070Ti
+model_type: ImageRestorationModel
+scale: 1
+num_gpu: 1
+manual_seed: 42
+
+path:
+  pretrain_network_g: ~    
+  strict_load_g: true
+  # Если нужно восстановиться после Ctrl+C, укажите путь к .state файлу ниже:
+  resume_state: ~
+  resume_path: "checkpoints/resume_jpeg_fcn_resnet_50.pth"
+  # === ДОБАВЛЯЕМ НАСТРОЙКИ ДЛЯ ВОССТАНОВЛЕНИЯ СНИМКОВ ===
+  inference_source: "dataset_ready_jpeg_fcn/test/lq_inputs"    # Что восстанавливаем (путь к файлу или целой папке!)
+  inference_out_dir: "experiments/restored_results"       # Куда складывать чистые готовые PNG            
+
+
+# Настройка штатных датасетов (Используем встроенный PairedImageDataset)
+datasets:
+  train:
+    name: JPEG_FCN_Resnet_50_Train_Dataset
+    # === ВАРИАНТЫ: PairedImageDataset (штатный) ИЛИ JPEGKeyPairDataset (кастомный) ===
+    type: PairedImageDataset
+    
+    # Пути к вашим JPEG парам (HQ - оригинал, LQ - сжатый JPEG)
+    dataroot_gt: dataset_ready_jpeg_fcn/train/hq_targets   
+    dataroot_lq: dataset_ready_jpeg_fcn/train/lq_inputs   
+    
+    filename_tmpl: '{}'
+    io_backend:
+      type: disk
+
+    gt_size: 256  
+    use_flip: true
+    use_rot: true
+
+    num_worker_per_gpu: 4
+    batch_size_per_gpu: 8  # Для JPEG на 4070Ti можно поднять до 16, если картинки легкие
+    dataset_enlarge_ratio: 1
+
+    auto_resume: true         # Автоматически начинать работу с сохранённой точки
+    save_checkpoint_epoch: 1  # Как часто сохранять чекпоинт (1 = каждую эпоху, 5 = каждые пять эпох)
+
+  val:
+    name: JPEG_Val_Dataset
+    type: PairedImageDataset  # ШТАТНЫЙ КЛАСС
+    dataroot_gt: dataset_ready_jpeg_fcn/test/hq_targets
+    dataroot_lq: dataset_ready_jpeg_fcn/test/lq_inputs
+    io_backend:
+      type: disk
+
+# Настройки нейросети NAFNet под JPEG
+network_g:
+  type: NAFNet
+  num_in_ch: 3                # ИЗМЕНЕНО: На вход идет 3 канала (стандартный RGB JPEG)
+  num_out_ch: 3               # На выходе получаем также 3 канала RGB
+  width: 32
+  enc_blk_nums: [2, 2, 4, 8]
+  middle_blk_num: 12
+  dec_blk_nums: [2, 2, 2, 2]
+
+# Параметры оптимизатора и обучения
+train:
+  optim_g:
+    type: AdamW
+    lr: !!float 1e-3
+    weight_decay: 0
+    betas: [0.9, 0.9]
+
+  scheduler:
+    type: TrueCosineAnnealingLR
+    T_max: 200000
+    eta_min: !!float 1e-7
+
+  total_iter: 200000  
+  warmup_iter: -1
+
+  pixel_opt:
+    type: L1Loss
+    loss_weight: 1.0
+    reduction: mean
+
+# Настройки логирования
+logger:
+  print_freq: 200
+  save_checkpoint_freq: !!float 5e3
+  use_tb_logger: true
+
+  metrics:
+    psnr:
+      type: calculate_psnr
+      crop_border: 0
+      test_y_channel: false
+    ssim:
+      type: calculate_ssim
+      crop_border: 0
+      test_y_channel: false
+
+# === НАСТРОЙКИ СЖАТИЯ ДЛЯ СКРИПТА ПОДГОТОВКИ ДАТАСЕТА ===
+process_data:
+  downscale_factor: 1
+  noise:
+    # Для режима JPEG ставим false, так как мы используем обычное сжатие quality=15
+    add: false  

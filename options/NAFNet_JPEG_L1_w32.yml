@@ -1,0 +1,49 @@
+# ⚙️ Общие настройки эксперимента
+name: JPEG-NAFNet-L1-w32
+manual_seed: 42
+train_ratio: 0.5                                  # Ровно 50% пойдет в train, остальное в test
+
+path:
+  source_images_dir: "/home/grand/Images/Flat-field/NEF/output_jpg"  # Папка с исходными чистыми картинками
+  dataset_root: "datasets/jpeg_fcn"               # Используем тот же корень датасета
+  resume_path: "checkpoints/resume_jpeg_nafnet_l1_w32.pth" # Новый изолированный файл чекпоинта
+
+# 📦 Настройки датасета
+datasets:
+  train:
+    type: PairedImageDataset                        # Режим JPEG
+    batch_size_per_gpu: 8
+    auto_resume: true                               # Подхватывать обучение при перезапуске
+    save_checkpoint_epoch: 10                       # Автосохранение каждые 10 эпох
+
+# 🧠 НАСТРОЙКИ НАСТОЯЩЕЙ НЕЙРОСЕТИ NAFNet
+network_g:
+  type: NAFNet
+  arch_file: "modules/NAFNet/basicsr/models/archs/NAFNet_arch.py" # Точный путь до оригинальной архитектуры
+  class_name: "NAFNet"
+  num_in_ch: 3                                      # RGB на входе
+  num_out_ch: 3                                     # RGB на выходе
+  width: 32                                         # Базовая ширина каналов
+  enc_blk_nums: [2, 2, 4, 8]                        # Количество блоков на сжатии
+  middle_blk_num: 12                                # Блоки в самом глубоком месте
+  dec_blk_nums: [2, 2, 2, 2]                        # Количество блоков на растяжении
+
+# 🛠️ Параметры деградации для скрипта-портилки
+process_data:
+  downscale_factor: 1
+  jpeg_quality: 15                                  # Жесткое сжатие
+  noise:
+    add: false
+
+# 🚀 Параметры обучения
+train:
+  num_epochs: 500
+  optim_g:
+    lr: !!float 1e-3
+  scheduler:
+    eta_min: !!float 1e-6                           # Чуть приподняли финальный шаг для свободы весов
+
+# 📊 Настройки логирования
+logger:
+  print_freq: 2
+  use_tb_logger: true                               # Включаем TensorBoard графики!
