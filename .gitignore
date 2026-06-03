@@ -40,7 +40,7 @@ trained
 restored_single
 
 # NAFNet
-NAFNet
+modules/NAFNet
 
 # *zip
 *.zip
