@@ -1,3 +1,0 @@
-[submodule "modules/NAFNet"]
-	path = modules/NAFNet
-	url = https://github.com/megvii-research/NAFNet
