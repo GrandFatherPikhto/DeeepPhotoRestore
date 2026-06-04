@@ -1,0 +1,82 @@
+experiment_dir: "experiments/RAW-NAFNet-D600"
+output_dir: "experiments/RAW-NAFNet-D600/figures"
+
+# Секция с путями к файлам данных
+data_files:
+  train_metrics: "experiments/RAW-NAFNet-D600/train_metrics.csv"
+  pipeline_log: "samples/debug_pipeline/pipeline.log"
+
+baseline:
+  psnr: 34.61
+  ssim: 0.9640
+  label: "Bilinear"
+
+plots:
+  - type: line
+    title: "Кривая потерь (Loss)"
+    data:
+      source: csv
+      file_ref: train_metrics
+      x: step
+      y: loss
+    smoothing: 0.9
+    y_label: "Loss"
+    save: loss_curve.png
+
+  - type: line
+    title: "PSNR на обучении"
+    data:
+      source: csv
+      file_ref: train_metrics
+      x: step
+      y: psnr
+    smoothing: 0.95
+    y_lim: [0, 45]
+    y_label: "PSNR (dB)"
+    save: psnr_curve.png
+
+  - type: line
+    title: "Learning Rate"
+    data:
+      source: csv
+      file_ref: train_metrics
+      x: step
+      y: lr
+    y_scale: log
+    y_label: "Learning rate"
+    save: lr_schedule.png
+
+  - type: comparison
+    title: "Сравнение PSNR: NAFNet vs Bilinear"
+    data:
+      source: csv
+      file_ref: train_metrics
+      x: step
+      y: psnr
+    baseline_value: 34.61
+    baseline_label: "Bilinear"
+    y_label: "PSNR (dB)"
+    save: psnr_comparison.png
+
+  - type: line
+    title: "SSIM на валидации"
+    data:
+      source: log
+      file_ref: pipeline_log
+      pattern: "SSIM = (\\d+\\.\\d+)"
+    smoothing: 1
+    y_lim: [0.5, 1.0]
+    y_label: "SSIM"
+    save: ssim_curve.png
+
+  - type: multi_line
+    title: "Дополнительные метрики"
+    data:
+      source: csv
+      file_ref: train_metrics
+      x: step
+      y: [delta_psnr, grad_var, tv_ratio]
+    y_scale: log
+    y_label: "Значение"
+    legend: ["ΔPSNR", "Grad variance", "TV ratio"]
+    save: aux_metrics.png

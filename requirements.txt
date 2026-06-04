@@ -19,3 +19,4 @@ tbparse
 pandas 
 matplotlib
 albumentations
+scikit-image

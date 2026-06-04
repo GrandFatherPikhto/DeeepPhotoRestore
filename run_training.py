@@ -15,17 +15,16 @@ from libraries.pipeline_model import create_nafnet_model
 from libraries.training_logger import TrainingLogger
 from libraries.training_validator import VisualValidator
 from libraries.training_checkpoint import get_checkpoint_path, load_checkpoint, save_checkpoint
-from libraries.training_losses import CombinedLoss
+from libraries.pipeline_logger import get_logger, setup_logger
+
+logger = get_logger()   # единый логгер для всего скрипта
 
 def calculate_psnr(mse_loss):
-    """PSNR из MSE (предполагается диапазон [0,1])"""
     if mse_loss == 0:
         return float('inf')
     return 20 * torch.log10(1.0 / torch.sqrt(mse_loss))
 
-
 def create_train_loader(opt):
-    """Создаёт DataLoader для тренировочного датасета"""
     dataset = create_restoration_dataset(opt, is_train=True)
     train_cfg = opt['datasets']['train']
     return DataLoader(
@@ -36,9 +35,7 @@ def create_train_loader(opt):
         pin_memory=(torch.cuda.is_available())
     )
 
-
 def create_optimizer_and_scheduler(model, opt):
-    """Инициализирует AdamW и CosineAnnealingLR"""
     train_cfg = opt['train']
     optim_cfg = train_cfg['optim_g']
     optimizer = torch.optim.AdamW(
@@ -54,20 +51,28 @@ def create_optimizer_and_scheduler(model, opt):
     )
     return optimizer, scheduler
 
-
 def cleanup_experiment(opt, save_dir):
-    """Удаляет папку эксперимента при --clean-training, возвращает ignore_resume"""
     if opt.get('clean_training', False):
         if os.path.exists(save_dir):
-            print(f"🧹 Очистка эксперимента: {save_dir}")
+            logger.info(f"Очистка эксперимента: {save_dir}")
             shutil.rmtree(save_dir)
         os.makedirs(save_dir, exist_ok=True)
         return True
     return False
 
+def init_logger(opt):
+    log_cfg = opt.get('pipeline_logger', {})
+    log_file = log_cfg.get('log_file', 'pipeline.log')
+    setup_logger(log_file)   # импортировать из libraries.pipeline_logger
+    logger = get_logger()
+
+    return logger
 
 def main():
     opt = get_pipeline_config()
+
+    logger = init_logger(opt)
+
     exp_name = opt.get('name', 'default_exp')
     save_dir = os.path.join('experiments', exp_name)
     device = get_torch_device()
@@ -78,7 +83,8 @@ def main():
     model = create_nafnet_model(opt, device)
     optimizer, scheduler = create_optimizer_and_scheduler(model, opt)
 
-    logger = TrainingLogger(opt, save_dir)
+    logger.info("Инициализация логгеров и валидатора")
+    train_logger = TrainingLogger(opt, save_dir)
     validator = VisualValidator(opt)
     checkpoint_path = get_checkpoint_path(opt)
 
@@ -88,7 +94,7 @@ def main():
         ignore_resume=ignore_resume
     )
 
-    criterion = CombinedLoss(opt)
+    criterion = nn.L1Loss()   # позже заменить на CombinedLoss
     train_cfg = opt['train']
     save_every = train_cfg.get('save_checkpoint_epoch', 10)
 
@@ -110,36 +116,39 @@ def main():
                 optimizer.step()
 
                 psnr = calculate_psnr(nn.MSELoss()(out, hq).detach())
-                logger.log_metrics(loss.item(), psnr.item(), optimizer.param_groups[0]['lr'],
-                                   global_step, model=model, targets=hq, outputs=out, device=device)
+                current_lr = optimizer.param_groups[0]['lr']
+                train_logger.log_metrics(
+                    loss.item(), psnr.item(), current_lr, global_step,
+                    model=model, targets=hq, outputs=out, device=device
+                )
                 global_step += 1
 
-                # вывод в консоль
+                # Консольный вывод через единый логгер
                 if batch_idx % opt.get('logger', {}).get('print_freq', 10) == 0:
                     parts = [f"[{exp_name}] Epoch {epoch}/{train_cfg['num_epochs']} Batch {batch_idx}/{len(train_loader)}"]
                     parts.append(f"Loss: {loss.item():.5f}")
                     parts.append(f"PSNR: {psnr.item():.2f} dB")
                     if device.type == 'cuda':
                         parts.append(f"VRAM: {torch.cuda.memory_allocated(device)/(1024**3):.2f}GB")
-                    print(" | ".join(parts))
+                    logger.info(" | ".join(parts))
 
-            # конец эпохи
             start_batch = 0
             scheduler.step()
-            val_freq = train_cfg.get('validation_freq', None)
 
+            # Валидация
+            val_freq = train_cfg.get('validation_freq', None)
             if val_freq is not None and (epoch + 1) % val_freq == 0:
                 validator.run_validation(model, epoch, device)
 
             if (epoch + 1) % save_every == 0:
                 save_checkpoint(checkpoint_path, epoch, batch_idx, model, optimizer, scheduler, global_step, is_emergency=False)
+                logger.info(f"Чекпоинт сохранён для эпохи {epoch+1}")
 
     except KeyboardInterrupt:
-        print("\n[Ctrl+C] Аварийное сохранение...")
+        logger.warning("Прерывание по Ctrl+C, аварийное сохранение...")
         save_checkpoint(checkpoint_path, epoch, batch_idx, model, optimizer, scheduler, global_step, is_emergency=True)
-        logger.close()
+        train_logger.close()
         sys.exit(0)
-
 
 if __name__ == '__main__':
     main()

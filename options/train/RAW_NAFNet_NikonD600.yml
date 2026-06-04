@@ -62,6 +62,8 @@ logger:
   print_freq: 2                  # Как часто выводить информацию в КОНСОЛЬ (каждый N-й батч)
   use_tb_logger: true            # Включить построение графиков в TensorBoard
   log_file_name: "train_progress.log" # Имя файла для сохранения числовой динамики
+  csv_file_name: "train_metrics.csv" # имя CSV-файла
+  log_csv: true                  # включаем запись в CSV
   file_log_freq: 1               # Как часто дописывать метрики в ФАЙЛ (каждый N-й батч)
   
   # Настройки оперативного вывода на экран в процессе работы батчей
@@ -80,6 +82,7 @@ logger:
     grad_variance: true          # Расчет дисперсии градиентов весов (детектор «путаницы» сети)
     tv_ratio: true               # Расчет Total Variation Ratio (детектор появления шума или мыла)
     vram_usage: true             # Фиксация точной утилизации памяти GPU (Allocated/Reserved)
+    log_ssim: true   # <-- новый флаг
 
 # Настройки визуального контроля и дебага
 visuals_logger:
