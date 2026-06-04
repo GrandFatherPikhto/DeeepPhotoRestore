@@ -44,6 +44,7 @@ modules/NAFNet
 # Игнорировать кэш сборки внутри подмодуля NAFNet
 modules/NAFNet/.eggs/
 modules/NAFNet/**/*.eggs/
+modules/NAFNet/basicsr
 
 # *zip
 *.zip
