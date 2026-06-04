@@ -42,6 +42,8 @@ network_g:
 
 # === ПАРАМЕТРЫ ЦИКЛА ОБУЧЕНИЯ ===
 train:
+  validation_freq: 1            # валидация каждую эпоху (можно 2, 3...)
+  save_checkpoint_epoch: 5      # Сохранять чекпоинты
   optim_g:
     lr: 1e-3
     weight_decay: 0
@@ -49,6 +51,11 @@ train:
   num_epochs: 150
   scheduler:
     eta_min: 1e-7
+
+losses:
+  l1_weight: 1.0
+  ffl_weight: 0.5
+  ffl_alpha: 1.0
 
 # === НАСТРОЙКИ ТЕЛЕМЕТРИИ И КАСТОМНОГО ЛОГГЕРА ДЛЯ ДИССЕРТАЦИИ ===
 logger:

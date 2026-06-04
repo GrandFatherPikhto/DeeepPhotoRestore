@@ -38,3 +38,23 @@ class FocalFrequencyLoss(nn.Module):
         frequency_loss = focal_weight * amp_distance
         
         return frequency_loss.mean() * self.loss_weight
+
+class CombinedLoss(nn.Module):
+    """
+    Комбинированная функция потерь: L1Loss + γ * FocalFrequencyLoss
+    """
+    def __init__(self, config):
+        super().__init__()
+        losses_cfg = config.get('losses', {})
+        self.l1_weight = losses_cfg.get('l1_weight', 1.0)
+        self.ffl_weight = losses_cfg.get('ffl_weight', 1.0)
+        self.l1_loss = nn.L1Loss()
+        self.ffl_loss = FocalFrequencyLoss(
+            loss_weight=1.0,  # вес уже учтён в ffl_weight
+            alpha=losses_cfg.get('ffl_alpha', 1.0)
+        )
+    
+    def forward(self, pred, target):
+        l1 = self.l1_loss(pred, target)
+        ffl = self.ffl_loss(pred, target)
+        return self.l1_weight * l1 + self.ffl_weight * ffl
