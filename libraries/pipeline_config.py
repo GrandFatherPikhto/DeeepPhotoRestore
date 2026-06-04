@@ -2,18 +2,27 @@ import argparse
 import os
 import yaml
 from libraries.pipeline_logger import get_logger
+
 logger = get_logger()
 
 def parse_args():
     """Парсинг аргументов командной строки."""
     parser = argparse.ArgumentParser(description="Tanahen Image Restoration Pipeline")
     parser.add_argument(
-        "-opt", type=str, required=True, 
+        "-opt", type=str, required=True,
         help="Путь к конфигурационному файлу YAML (например, options/train/RAW_NAFNet_NikonD600.yml)"
     )
     parser.add_argument(
-        "--clean", action="store_true", 
-        help="Флаг полной очистки папки с дебаг-визуализациями перед запуском"
+        "--clean", action="store_true",
+        help="[DEPRECATED] Очистить всё (датасет и визуализации)"
+    )
+    parser.add_argument(
+        "--clean-dataset", action="store_true",
+        help="Очистить папки train/test датасета"
+    )
+    parser.add_argument(
+        "--clean-visuals", action="store_true",
+        help="Очистить папку с визуализациями"
     )
     return parser.parse_args()
 
@@ -25,7 +34,6 @@ def load_yaml_config(config_path):
         
     with open(config_path, "r", encoding="utf-8") as f:
         try:
-            # Используем SafeLoader для безопасного чтения структуры
             config = yaml.safe_load(f)
             logger.info(f"Конфигурация успешно загружена из файла: {config_path}")
             return config
@@ -38,6 +46,14 @@ def get_pipeline_config():
     args = parse_args()
     config = load_yaml_config(args.opt)
     
-    # Инжектируем флаг --clean прямо в общий словарь конфигурации для удобства
-    config["clean_visuals"] = args.clean
+    # Если передан старый --clean, включаем оба новых флага
+    if args.clean:
+        args.clean_dataset = True
+        args.clean_visuals = True
+    
+    # Сохраняем флаги в config
+    config["clean_dataset"] = getattr(args, "clean_dataset", False)
+    config["clean_visuals"] = getattr(args, "clean_visuals", False)
+    config["opt_path"] = args.opt
+    
     return config

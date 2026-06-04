@@ -1,5 +1,5 @@
 import os
-import cv2
+# import cv2
 from PIL import Image
 import numpy as np
 import torch
@@ -64,45 +64,41 @@ class RestorationDataset(Dataset):
             lq_img = np.clip(lq_img.astype(np.float32) + noise, 0, 255).astype(np.uint8)
         return lq_img
 
-    # В самый конец файла полностью замени старый метод __getitem__ на этот:
     def __getitem__(self, idx):
         import random
         
-        # Заменяем опасную рекурсию на безопасный цикл ограничения попыток
         for _ in range(len(self.file_names)):
-            lq_name = self.file_names[idx]  # Например: DSC_0411_bayer.tiff
-
-            # Трансформируем имя для папки HQ: убираем '_bayer.tiff' и добавляем '.png'
-            hq_name = lq_name.replace("_bayer.tiff", ".png") # Станет: DSC_0411.png
-
+            lq_name = self.file_names[idx]
+            hq_name = lq_name.replace("_bayer.tiff", ".png")
             lq_path = os.path.join(self.lq_dir, lq_name)
             hq_path = os.path.join(self.hq_dir, hq_name)
             
             try:
-                # Читаем тяжелые 16-битные TIFF через Pillow и переводим в NumPy массив
                 lq_img = np.array(Image.open(lq_path))
                 hq_img = np.array(Image.open(hq_path))
-                
                 if lq_img is not None and hq_img is not None:
-                    break # Файлы успешно прочитаны, выходим из цикла поиска
+                    break
             except Exception as e:
-                logger.warning(f"⚠️ Ошибка чтения файла через Pillow ({e}): {lq_path}")
-                
-            # Если файл не прочитался — берем случайный следующий индекс
-            idx = random.randint(0, len(self.file_names) - 1)
+                logger.warning(f"Ошибка чтения: {e}")
+                idx = random.randint(0, len(self.file_names) - 1)
         else:
-            # Если перебрали вообще весь датасет и ничего не прочиталось:
-            logger.error("❌ КРИТИЧЕСКАЯ ОШИБКА: Ни один TIFF-файл в датасете не смог открыться!")
             raise FileNotFoundError("All TIFF files are unreadable")
 
-        # Применяем наш ЧКХ-шум
+        # Применяем шум (остаётся как есть)
         lq_img = self._apply_cfa_noise(lq_img)
         
+        # Случайный кроп для тренировочных данных
+        # if self.is_train:
+        #     lq_img, hq_img = self._random_crop(lq_img, hq_img)
+        if self.is_train:
+            lq_img, hq_img = self._resize_to_gt(lq_img, hq_img)            
+        
+        # Аугментации (flip, rotate) – они уже есть
         if self.is_train:
             augmented = self.geom_transform(image=lq_img, mask=hq_img)
             lq_img, hq_img = augmented['image'], augmented['mask']
-            
-        # Если картинка прочиталась как монохромная [H, W], превращаем ее в 3 одинаковых канала
+        
+        # Преобразование в тензоры
         if len(lq_img.shape) == 2:
             lq_img = np.stack([lq_img] * 3, axis=-1)
         if len(hq_img.shape) == 2:
@@ -112,3 +108,29 @@ class RestorationDataset(Dataset):
         hq_tensor = torch.from_numpy(hq_img).float().permute(2, 0, 1) / 255.0
         
         return lq_tensor, hq_tensor
+    # def _random_crop(self, lq_img, hq_img):
+    #     """Вырезает случайный патч размера gt_size из обоих изображений."""
+    #     h, w = lq_img.shape[:2]
+    #     gt_size = self.gt_size
+    #     if h > gt_size and w > gt_size:
+    #         top = np.random.randint(0, h - gt_size)
+    #         left = np.random.randint(0, w - gt_size)
+    #         lq_img = lq_img[top:top+gt_size, left:left+gt_size]
+    #         hq_img = hq_img[top:top+gt_size, left:left+gt_size]
+    #     else:
+    #         # Если изображение меньше gt_size – ресайзим (но по логике датасета такого не должно быть)
+    #         pass
+    #     return lq_img, hq_img
+    
+    def _resize_to_gt(self, lq_img, hq_img):
+        """Приводит оба изображения к размеру gt_size x gt_size (бикубическая интерполяция)."""
+        from skimage.transform import resize  # или cv2, но проще через skimage
+        gt_size = self.gt_size
+        h, w = lq_img.shape[:2]
+        # Если изображение уже нужного размера, не трогаем
+        if h == gt_size and w == gt_size:
+            return lq_img, hq_img
+        # Ресайзим LQ и HQ
+        lq_resized = resize(lq_img, (gt_size, gt_size), preserve_range=True, anti_aliasing=True).astype(lq_img.dtype)
+        hq_resized = resize(hq_img, (gt_size, gt_size), preserve_range=True, anti_aliasing=True).astype(hq_img.dtype)
+        return lq_resized, hq_resized    

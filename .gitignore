@@ -47,6 +47,9 @@ modules/NAFNet/**/*.eggs/
 
 # *zip
 *.zip
+*.tar.bz2
+*.tar
+*.tar.gz
 
 # *.png
 *.png

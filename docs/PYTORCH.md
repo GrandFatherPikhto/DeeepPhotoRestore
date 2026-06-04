@@ -544,9 +544,6 @@ pip uninstall -y basicsr
 ```bash
 cd modules/NAFNet
 python3 setup.py develop --no_cuda_ext
-pip install -e . --no-build-isolation --config-settings="--global-option=--no_cuda_ext"
-cd ../../
-
 ```
 
 Результат выполнения: Утилита создает символическую ссылку basicsr.egg-link в site-packages, жестко замыкая любые системные вызовы пакета basicsr на физический каталог modules/NAFNet/basicsr.

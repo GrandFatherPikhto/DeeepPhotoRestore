@@ -15,14 +15,14 @@ except ModuleNotFoundError:
     logger.warning("FocalFrequencyLoss не найден! Используется только L1-Loss.")
     HAS_FFL = False
 
-def run_smoke_test(model, dataset, config):
+def run_smoke_test(model, dataset, config, device):
     """
     Нагрузочное тестирование градиентных потоков и видеопамяти GPU.
     Проверяет связку: NAFNet + FocalFrequencyLoss + AdamW.
     """
     logger.info("=== Запуск модуля стресс-тестирования (Smoke Test) ===")
     
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logger.info(f"Вычислительное устройство: {device}")
     
     model = model.to(device)
