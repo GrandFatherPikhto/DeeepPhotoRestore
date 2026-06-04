@@ -71,3 +71,13 @@ logger:
     grad_variance: true          # Расчет дисперсии градиентов весов (детектор «путаницы» сети)
     tv_ratio: true               # Расчет Total Variation Ratio (детектор появления шума или мыла)
     vram_usage: true             # Фиксация точной утилизации памяти GPU (Allocated/Reserved)
+
+# Настройки визуального контроля и дебага
+visuals_logger:
+  output_dir: "samples/debug_visuals"  # Папка, куда полетят файлы проверки
+  lq_preview_name: "debug_lq_preview.png"
+  gt_reference_name: "debug_gt_reference.png"
+
+# Настройки сквозного логирования процесса
+pipeline_logger:
+  log_file: "samples/debug_pipeline/pipeline.log"  # Путь к файлу лога  

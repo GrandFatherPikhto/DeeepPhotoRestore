@@ -18,3 +18,4 @@ PyQt6
 tbparse
 pandas 
 matplotlib
+albumentations
