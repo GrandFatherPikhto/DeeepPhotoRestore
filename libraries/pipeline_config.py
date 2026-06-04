@@ -8,22 +8,12 @@ logger = get_logger()
 def parse_args():
     """Парсинг аргументов командной строки."""
     parser = argparse.ArgumentParser(description="Tanahen Image Restoration Pipeline")
-    parser.add_argument(
-        "-opt", type=str, required=True,
-        help="Путь к конфигурационному файлу YAML (например, options/train/RAW_NAFNet_NikonD600.yml)"
-    )
-    parser.add_argument(
-        "--clean", action="store_true",
-        help="[DEPRECATED] Очистить всё (датасет и визуализации)"
-    )
-    parser.add_argument(
-        "--clean-dataset", action="store_true",
-        help="Очистить папки train/test датасета"
-    )
-    parser.add_argument(
-        "--clean-visuals", action="store_true",
-        help="Очистить папку с визуализациями"
-    )
+    parser.add_argument("-opt", type=str, required=True, help="Путь к конфигурационному файлу YAML")
+    parser.add_argument("--clean", action="store_true", help="[DEPRECATED] Очистить всё (датасет + визуализации)")
+    parser.add_argument("--clean-dataset", action="store_true", help="Очистить папки train/test датасета")
+    parser.add_argument("--clean-visuals", action="store_true", help="Очистить папку с визуализациями")
+    parser.add_argument("--clean-training", action="store_true", help="Очистить эксперимент (удалить папку experiments/имя)")
+    parser.add_argument("--resume", type=str, default=None, help="Путь к чекпоинту для продолжения обучения")
     return parser.parse_args()
 
 def load_yaml_config(config_path):
@@ -42,18 +32,17 @@ def load_yaml_config(config_path):
             raise e
 
 def get_pipeline_config():
-    """Точка входа модуля: возвращает объединенный словарь настроек."""
     args = parse_args()
     config = load_yaml_config(args.opt)
     
-    # Если передан старый --clean, включаем оба новых флага
+    # Если передан старый --clean, включаем оба старых флага (но не --clean-training)
     if args.clean:
         args.clean_dataset = True
         args.clean_visuals = True
     
-    # Сохраняем флаги в config
-    config["clean_dataset"] = getattr(args, "clean_dataset", False)
-    config["clean_visuals"] = getattr(args, "clean_visuals", False)
+    config["clean_dataset"] = args.clean_dataset
+    config["clean_visuals"] = args.clean_visuals
+    config["clean_training"] = args.clean_training
+    config["resume"] = args.resume
     config["opt_path"] = args.opt
-    
     return config

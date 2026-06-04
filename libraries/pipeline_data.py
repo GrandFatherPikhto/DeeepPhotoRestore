@@ -1,130 +1,88 @@
 import os
-# import cv2
-from PIL import Image
 import numpy as np
 import torch
 from torch.utils.data import Dataset
+import tifffile
+from PIL import Image
 import albumentations as A
-from albumentations.pytorch import ToTensorV2
-from tqdm import tqdm  # <-- Импортируем прогресс-бар
+from tqdm import tqdm
 from libraries.pipeline_logger import get_logger
+
 logger = get_logger()
 
 class RestorationDataset(Dataset):
-    """Кастомный датасет для пространственно-цветовой реставрации RAW-данных."""
-    
     def __init__(self, config, is_train=True):
         self.is_train = is_train
-
-        # 1. Вытаскиваем глобальный корень датасета из yml
         dataset_root = config.get("dataset_root", "datasets/nef_nafnet")
-
-        # 2. Определяем имя подпапки в зависимости от режима (train или val)
         phase = "train" if is_train else "val"
-
-        # 3. Автоматически собираем финальные пути к LQ и HQ патчам
         self.lq_dir = os.path.join(dataset_root, phase, "lq_inputs")
         self.hq_dir = os.path.join(dataset_root, phase, "hq_targets")
-
-        # 4. Безопасно забираем размер патча (по дефолту 256)
         data_cfg = config.get("datasets", {}).get(phase, {})
         self.gt_size = data_cfg.get("gt_size", 256)
         
         self.file_names = sorted(os.listdir(self.lq_dir))
+        logger.info(f"Загрузка датасета, {len(self.file_names)} файлов")
         
-        # Элегантный прогресс-бар прямо при инициализации данных
-        logger.info(f"Начало подготовки и валидации потоков {'обучения' if is_train else 'валидации'}...")
-        for name in tqdm(self.file_names, desc="📦 Сборка датасета Nikon D600", unit="кадр"):
-            # Здесь происходит быстрая фоновая проверка целостности файлов, если нужно
-            pass
-            
-        logger.info(f"Датасет успешно собран. Зарегистрировано кадров: {len(self.file_names)}")
-        
-        # Настройки трансформаций и шума остаются прежними...
-        self.geom_transform = A.Compose([
-            A.HorizontalFlip(p=0.5),
-            A.VerticalFlip(p=0.5),
-            A.RandomRotate90(p=0.5),
-        ], additional_targets={'image': 'image', 'mask': 'image'}, is_check_shapes=False)  # <-- Отключаем проверку равенства размеров
-        
-        # noise_cfg = config.get("noise_model", {})
-        # self.sigma_min = noise_cfg.get("sigma_min", 10.0)
-        # self.sigma_max = noise_cfg.get("sigma_max", 50.0)
-        # self.noise_p = noise_cfg.get("p", 0.3)
+        # Геометрические аугментации (трансформации, не меняющие число каналов)
+        # Для LQ (4 канала) и HQ (3 канала) нужно применять одинаковые трансформации
+        # Пока отключим для простоты, включим позже
+        self.use_augment = False  # временно отключаем аугментации
+        if self.use_augment and self.is_train:
+            self.geom_transform = A.Compose([
+                A.HorizontalFlip(p=0.5),
+                A.VerticalFlip(p=0.5),
+                A.RandomRotate90(p=0.5),
+            ])
+        else:
+            self.geom_transform = None
 
     def __len__(self):
         return len(self.file_names)
 
     def __getitem__(self, idx):
         import random
-        
         for _ in range(len(self.file_names)):
             lq_name = self.file_names[idx]
             hq_name = lq_name.replace("_bayer.tiff", ".png")
             lq_path = os.path.join(self.lq_dir, lq_name)
             hq_path = os.path.join(self.hq_dir, hq_name)
-            
             try:
-                lq_img = np.array(Image.open(lq_path))
-                hq_img = np.array(Image.open(hq_path))
+                # Читаем LQ как 4-канальный TIFF (H, W, 4)
+                lq_img = tifffile.imread(lq_path).astype(np.float32) / 65535.0
+                # Читаем HQ как RGB PNG (H, W, 3)
+                hq_img = np.array(Image.open(hq_path).convert('RGB')).astype(np.float32) / 255.0
                 if lq_img is not None and hq_img is not None:
                     break
             except Exception as e:
-                logger.warning(f"Ошибка чтения: {e}")
+                logger.warning(f"Ошибка чтения {lq_path}: {e}")
                 idx = random.randint(0, len(self.file_names) - 1)
         else:
-            raise FileNotFoundError("All TIFF files are unreadable")
+            raise FileNotFoundError("All files unreadable")
 
-        # Применяем шум (остаётся как есть)
-        # lq_img = self._apply_cfa_noise(lq_img)
-        
-        # Случайный кроп для тренировочных данных
-        # if self.is_train:
-        #     lq_img, hq_img = self._random_crop(lq_img, hq_img)
-        if self.is_train:
-            lq_img, hq_img = self._resize_to_gt(lq_img, hq_img)            
-        
-        # Аугментации (flip, rotate) – они уже есть
-        if self.is_train:
-            augmented = self.geom_transform(image=lq_img, mask=hq_img)
-            lq_img, hq_img = augmented['image'], augmented['mask']
-        
+        # Приведение к размеру gt_size
+        lq_img, hq_img = self._resize_to_gt(lq_img, hq_img)
+
+        # Аугментации (отключены)
+        if self.geom_transform is not None:
+            # Для LQ и HQ нужно применять одни и те же параметры трансформации
+            # Пока пропускаем, так как число каналов разное (4 vs 3)
+            # В будущем можно использовать параметризованные трансформации
+            pass
+
         # Преобразование в тензоры
-        if len(lq_img.shape) == 2:
-            lq_img = np.stack([lq_img] * 3, axis=-1)
-        if len(hq_img.shape) == 2:
-            hq_img = np.stack([hq_img] * 3, axis=-1)
-            
-        lq_tensor = torch.from_numpy(lq_img).float().permute(2, 0, 1) / 255.0
-        hq_tensor = torch.from_numpy(hq_img).float().permute(2, 0, 1) / 255.0
-        
+        lq_tensor = torch.from_numpy(lq_img.transpose(2, 0, 1)).float()   # (4, H, W)
+        hq_tensor = torch.from_numpy(hq_img.transpose(2, 0, 1)).float()   # (3, H, W)
         return lq_tensor, hq_tensor
-    # def _random_crop(self, lq_img, hq_img):
-    #     """Вырезает случайный патч размера gt_size из обоих изображений."""
-    #     h, w = lq_img.shape[:2]
-    #     gt_size = self.gt_size
-    #     if h > gt_size and w > gt_size:
-    #         top = np.random.randint(0, h - gt_size)
-    #         left = np.random.randint(0, w - gt_size)
-    #         lq_img = lq_img[top:top+gt_size, left:left+gt_size]
-    #         hq_img = hq_img[top:top+gt_size, left:left+gt_size]
-    #     else:
-    #         # Если изображение меньше gt_size – ресайзим (но по логике датасета такого не должно быть)
-    #         pass
-    #     return lq_img, hq_img
-    
+
     def _resize_to_gt(self, lq_img, hq_img):
-        """Приводит оба изображения к размеру gt_size x gt_size (бикубическая интерполяция)."""
-        from skimage.transform import resize  # или cv2, но проще через skimage
         gt_size = self.gt_size
         h, w = lq_img.shape[:2]
-        # Если изображение уже нужного размера, не трогаем
         if h == gt_size and w == gt_size:
             return lq_img, hq_img
-        # Ресайзим LQ и HQ
+        from skimage.transform import resize
         lq_resized = resize(lq_img, (gt_size, gt_size), preserve_range=True, anti_aliasing=True).astype(lq_img.dtype)
         hq_resized = resize(hq_img, (gt_size, gt_size), preserve_range=True, anti_aliasing=True).astype(hq_img.dtype)
-        return lq_resized, hq_resized    
-    
+        return lq_resized, hq_resized
+
 def create_restoration_dataset(config, is_train=True):
-    return RestorationDataset(config, is_train=is_train)    
+    return RestorationDataset(config, is_train=is_train)

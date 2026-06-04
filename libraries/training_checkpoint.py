@@ -2,11 +2,14 @@ import os
 import torch
 from pathlib import Path
 
-def get_checkpoint_path(args, opt):
-    """Определяет финальный путь к файлу чекпоинта"""
-    if args.resume:
-        return Path(args.resume)
-    return Path(opt.get('path', {}).get('resume_path', 'checkpoints/resume_simple_jpeg.pth'))
+def get_checkpoint_path(opt):
+    """Определяет путь к файлу чекпоинта на основе конфига и аргумента --resume."""
+    resume = opt.get('resume')  # из аргументов командной строки (--resume)
+    if resume:
+        return Path(resume)
+    # Иначе используем resume_path из конфига (секция path) или значение по умолчанию
+    resume_path = opt.get('path', {}).get('resume_path', 'checkpoints/resume.pth')
+    return Path(resume_path)
 
 def load_checkpoint(checkpoint_path, model, optimizer, scheduler, train_loader, device, auto_resume, ignore_resume=False):
     """Безопасно загружает состояние и вычисляет global_step"""
