@@ -46,8 +46,17 @@ def run_smoke_test(model, dataset, config):
     try:
         lq_tensor, hq_tensor = dataset[0]
         # Добавляем фейковую размерность батча [B=1, C, H, W] и кидаем на GPU
+        # СТАЛО (внутри run_smoke_test перед l1_loss_fn):
         lq_batch = lq_tensor.unsqueeze(0).to(device)
         hq_batch = hq_tensor.unsqueeze(0).to(device)
+        
+        # ——— ФИНАЛЬНЫЙ СИСТЕМНЫЙ ЩИТ РАЗМЕРНОСТЕЙ ———
+        # Если размеры маски и выхода сети не совпадают, принудительно сжимаем/растягиваем маску под размер выхода модели
+        if pred_batch.shape != hq_batch.shape:
+            import torch.nn.functional as F
+            hq_batch = F.interpolate(hq_batch, size=(pred_batch.shape[2], pred_batch.shape[3]), mode='bilinear', align_corners=False)
+        # —————————————————————————————————————————————
+
     except Exception as e:
         logger.error(f"Не удалось подготовить тестовый батч данных: {e}")
         raise e

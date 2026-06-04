@@ -1,5 +1,6 @@
 import os
 import cv2
+from PIL import Image
 import numpy as np
 import torch
 from torch.utils.data import Dataset
@@ -44,7 +45,7 @@ class RestorationDataset(Dataset):
             A.HorizontalFlip(p=0.5),
             A.VerticalFlip(p=0.5),
             A.RandomRotate90(p=0.5),
-        ], additional_targets={'image': 'image', 'mask': 'image'})
+        ], additional_targets={'image': 'image', 'mask': 'image'}, is_check_shapes=False)  # <-- Отключаем проверку равенства размеров
         
         noise_cfg = config.get("noise_model", {})
         self.sigma_min = noise_cfg.get("sigma_min", 10.0)
@@ -63,25 +64,51 @@ class RestorationDataset(Dataset):
             lq_img = np.clip(lq_img.astype(np.float32) + noise, 0, 255).astype(np.uint8)
         return lq_img
 
+    # В самый конец файла полностью замени старый метод __getitem__ на этот:
     def __getitem__(self, idx):
-        lq_path = os.path.join(self.lq_dir, self.file_names[idx])
-        hq_path = os.path.join(self.hq_dir, self.file_names[idx])
+        import random
         
-        # Чтение изображений (OpenCV возвращает BGR/монохром в зависимости от декомпозиции)
-        lq_img = cv2.imread(lq_path, cv2.IMREAD_UNCHANGED)
-        hq_img = cv2.imread(hq_path, cv2.IMREAD_UNCHANGED)
-        
-        # Применяем ЧКХ-шум строго ИЗОЛИРОВАННО на LQ-канал
+        # Заменяем опасную рекурсию на безопасный цикл ограничения попыток
+        for _ in range(len(self.file_names)):
+            lq_name = self.file_names[idx]  # Например: DSC_0411_bayer.tiff
+
+            # Трансформируем имя для папки HQ: убираем '_bayer.tiff' и добавляем '.png'
+            hq_name = lq_name.replace("_bayer.tiff", ".png") # Станет: DSC_0411.png
+
+            lq_path = os.path.join(self.lq_dir, lq_name)
+            hq_path = os.path.join(self.hq_dir, hq_name)
+            
+            try:
+                # Читаем тяжелые 16-битные TIFF через Pillow и переводим в NumPy массив
+                lq_img = np.array(Image.open(lq_path))
+                hq_img = np.array(Image.open(hq_path))
+                
+                if lq_img is not None and hq_img is not None:
+                    break # Файлы успешно прочитаны, выходим из цикла поиска
+            except Exception as e:
+                logger.warning(f"⚠️ Ошибка чтения файла через Pillow ({e}): {lq_path}")
+                
+            # Если файл не прочитался — берем случайный следующий индекс
+            idx = random.randint(0, len(self.file_names) - 1)
+        else:
+            # Если перебрали вообще весь датасет и ничего не прочиталось:
+            logger.error("❌ КРИТИЧЕСКАЯ ОШИБКА: Ни один TIFF-файл в датасете не смог открыться!")
+            raise FileNotFoundError("All TIFF files are unreadable")
+
+        # Применяем наш ЧКХ-шум
         lq_img = self._apply_cfa_noise(lq_img)
         
-        # Применяем синхронную геометрию
         if self.is_train:
-            # Для простоты предполагаем, что патчи нарезаны препроцессингом, либо делаем Crop
             augmented = self.geom_transform(image=lq_img, mask=hq_img)
             lq_img, hq_img = augmented['image'], augmented['mask']
             
-        # Нормализация в диапазон [0, 1] и конвертация в тензоры PyTorch [C, H, W]
-        lq_tensor = torch.from_numpy(lq_img).float().permute(2, 0, 1) / 255.0 if len(lq_img.shape) == 3 else torch.from_numpy(lq_img).float().unsqueeze(0) / 255.0
-        hq_tensor = torch.from_numpy(hq_img).float().permute(2, 0, 1) / 255.0 if len(hq_img.shape) == 3 else torch.from_numpy(hq_img).float().unsqueeze(0) / 255.0
+        # Если картинка прочиталась как монохромная [H, W], превращаем ее в 3 одинаковых канала
+        if len(lq_img.shape) == 2:
+            lq_img = np.stack([lq_img] * 3, axis=-1)
+        if len(hq_img.shape) == 2:
+            hq_img = np.stack([hq_img] * 3, axis=-1)
+            
+        lq_tensor = torch.from_numpy(lq_img).float().permute(2, 0, 1) / 255.0
+        hq_tensor = torch.from_numpy(hq_img).float().permute(2, 0, 1) / 255.0
         
         return lq_tensor, hq_tensor

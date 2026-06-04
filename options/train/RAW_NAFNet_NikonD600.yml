@@ -7,7 +7,7 @@ manual_seed: 42                  # Фиксация случайных чисе�
 
 path:
   path:
-  source_images_dir: "/home/grand/Images/NEF" # Либо ~, либо полный путь
+  source_images_dir: "/home/grand/Images/NEF_Test" # Либо ~, либо полный путь
   dataset_root: "datasets/nef_nafnet"        # Корневая папка сгенерированного датасета
   resume_path: "checkpoints/resume_nef_nafnet.pth" # Путь сохранения/восстановления чекпоинта
 
