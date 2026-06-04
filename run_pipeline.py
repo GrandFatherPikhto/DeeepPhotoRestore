@@ -9,8 +9,10 @@ import subprocess
 from libraries.pipeline_config import get_pipeline_config
 from libraries.pipeline_logger import setup_logger
 from libraries.pipeline_device import get_torch_device
-from libraries.pipeline_dataset import ensure_dataset_ready
-from libraries.pipeline_dataset import create_restoration_dataset
+# from libraries.pipeline_dataset import ensure_dataset_ready
+from libraries.pipeline_prepare import ensure_dataset_ready
+# from libraries.pipeline_dataset import create_restoration_dataset
+from libraries.pipeline_data import create_restoration_dataset
 from libraries.pipeline_model import create_nafnet_model
 from libraries.pipeline_visuals import run_visual_control
 from libraries.pipeline_smoke import run_smoke_test
@@ -28,7 +30,8 @@ def main():
     
     try:
         clean_dataset_flag = config.get("clean_dataset", False)
-        ensure_dataset_ready(config, opt_path, clean_dataset=clean_dataset_flag)
+        # ensure_dataset_ready(config, opt_path, clean_dataset=clean_dataset_flag)
+        ensure_dataset_ready(config, clean_dataset=clean_dataset_flag)
 
         dataset = create_restoration_dataset(config, is_train=True)
 

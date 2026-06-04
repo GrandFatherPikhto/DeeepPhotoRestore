@@ -47,22 +47,13 @@ class RestorationDataset(Dataset):
             A.RandomRotate90(p=0.5),
         ], additional_targets={'image': 'image', 'mask': 'image'}, is_check_shapes=False)  # <-- Отключаем проверку равенства размеров
         
-        noise_cfg = config.get("noise_model", {})
-        self.sigma_min = noise_cfg.get("sigma_min", 10.0)
-        self.sigma_max = noise_cfg.get("sigma_max", 50.0)
-        self.noise_p = noise_cfg.get("p", 0.3)
+        # noise_cfg = config.get("noise_model", {})
+        # self.sigma_min = noise_cfg.get("sigma_min", 10.0)
+        # self.sigma_max = noise_cfg.get("sigma_max", 50.0)
+        # self.noise_p = noise_cfg.get("p", 0.3)
+
     def __len__(self):
         return len(self.file_names)
-
-    def _apply_cfa_noise(self, lq_img):
-        """Математическое наложение шума на LQ поток на основе параметров ЧКХ."""
-        if self.is_train and np.random.rand() < self.noise_p:
-            sigma = np.random.uniform(self.sigma_min, self.sigma_max)
-            # Генерируем АБГШ той же размерности, что и LQ патч
-            noise = np.random.normal(0, sigma, lq_img.shape).astype(np.float32)
-            # В диссертации это свертка с ЧКХ, здесь — симуляция аддитивной стохастики
-            lq_img = np.clip(lq_img.astype(np.float32) + noise, 0, 255).astype(np.uint8)
-        return lq_img
 
     def __getitem__(self, idx):
         import random
@@ -85,7 +76,7 @@ class RestorationDataset(Dataset):
             raise FileNotFoundError("All TIFF files are unreadable")
 
         # Применяем шум (остаётся как есть)
-        lq_img = self._apply_cfa_noise(lq_img)
+        # lq_img = self._apply_cfa_noise(lq_img)
         
         # Случайный кроп для тренировочных данных
         # if self.is_train:
@@ -134,3 +125,6 @@ class RestorationDataset(Dataset):
         lq_resized = resize(lq_img, (gt_size, gt_size), preserve_range=True, anti_aliasing=True).astype(lq_img.dtype)
         hq_resized = resize(hq_img, (gt_size, gt_size), preserve_range=True, anti_aliasing=True).astype(hq_img.dtype)
         return lq_resized, hq_resized    
+    
+def create_restoration_dataset(config, is_train=True):
+    return RestorationDataset(config, is_train=is_train)    
