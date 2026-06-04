@@ -41,6 +41,9 @@ restored_single
 
 # NAFNet
 modules/NAFNet
+# Игнорировать кэш сборки внутри подмодуля NAFNet
+modules/NAFNet/.eggs/
+modules/NAFNet/**/*.eggs/
 
 # *zip
 *.zip
