@@ -96,27 +96,34 @@ def main():
         data_cfg = plot_cfg['data']
         source = data_cfg.get('source', 'csv')
 
-        if 'file_ref' in data_cfg:
+        # Определяем путь к файлу
+        if source == 'val_csv':
+            # Автоматически ищем val_metrics.csv в папке эксперимента
+            filepath_abs = os.path.join(exp_dir, 'val_metrics.csv')
+            if not os.path.exists(filepath_abs):
+                print(f"Пропуск {plot_cfg.get('save')}: файл {filepath_abs} не найден")
+                continue
+        elif 'file_ref' in data_cfg:
             ref = data_cfg['file_ref']
             if ref not in data_files:
                 print(f"Пропуск {plot_cfg.get('save')}: неизвестный file_ref '{ref}'")
                 continue
-            filepath = data_files[ref]
+            filepath_abs = os.path.abspath(data_files[ref])
+            if not os.path.exists(filepath_abs):
+                print(f"Пропуск {plot_cfg.get('save')}: файл {filepath_abs} не найден")
+                continue
         elif 'file' in data_cfg:
-            filepath = data_cfg['file']
+            filepath_abs = os.path.abspath(data_cfg['file'])
+            if not os.path.exists(filepath_abs):
+                print(f"Пропуск {plot_cfg.get('save')}: файл {filepath_abs} не найден")
+                continue
         else:
             print(f"Пропуск {plot_cfg.get('save')}: не указан file или file_ref")
             continue
 
-        filepath_abs = os.path.abspath(filepath)
-        if not os.path.exists(filepath_abs):
-            print(f"Пропуск {plot_cfg.get('save')}: файл {filepath_abs} не найден")
-            continue
-
         try:
-            if source == 'csv':
+            if source == 'csv' or source == 'val_csv':
                 if plot_type == 'multi_line':
-                    # Загружаем DataFrame один раз
                     df = pd.read_csv(filepath_abs)
                     x_col = data_cfg['x']
                     x = df[x_col].values

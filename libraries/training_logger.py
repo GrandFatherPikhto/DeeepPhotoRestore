@@ -139,3 +139,19 @@ class TrainingLogger:
         if self.tb_logger:
             self.tb_logger.close()
             logger.info("Потоки TensorBoard закрыты.")
+
+    def log_validation_metrics(self, epoch, ssim, psnr_val=None):
+        val_csv_path = os.path.join(self.save_dir, 'val_metrics.csv')
+        file_exists = os.path.exists(val_csv_path)
+        with open(val_csv_path, 'a', newline='') as f:
+            writer = csv.writer(f)
+            if not file_exists:
+                if psnr_val is not None:
+                    writer.writerow(['epoch', 'ssim', 'psnr'])
+                else:
+                    writer.writerow(['epoch', 'ssim'])
+            if psnr_val is not None:
+                writer.writerow([epoch, ssim, psnr_val])
+            else:
+                writer.writerow([epoch, ssim])
+        logger.info(f"Валидационные метрики сохранены в {val_csv_path}")

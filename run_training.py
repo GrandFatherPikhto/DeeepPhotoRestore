@@ -82,8 +82,11 @@ def main():
             start_batch = 0
             scheduler.step()
 
-            if (epoch + 1) % train_cfg.get('validation_freq', 1) == 0:
+            val_freq = train_cfg.get('validation_freq', 1)   # по умолчанию 1
+            if (epoch + 1) % val_freq == 0:
                 validator.run_validation(model, epoch, device)
+                mean_ssim = validator.run_validation(model, epoch, device)
+                train_logger.log_validation_metrics(epoch, mean_ssim)
 
             if (epoch + 1) % save_every == 0:
                 save_checkpoint(checkpoint_path, epoch, batch_idx, model, optimizer, scheduler, global_step, is_emergency=False)

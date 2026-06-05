@@ -19,6 +19,7 @@ from libraries.pipeline_smoke import run_smoke_test
 
 def main():
     config = get_pipeline_config()
+    print("DEBUG pipeline_logger.log_file =", config.get('pipeline_logger', {}).get('log_file'))
     opt_path = config.get("opt_path")
     if not opt_path:
         raise ValueError("Не передан параметр -opt")

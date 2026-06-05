@@ -4,7 +4,7 @@ output_dir: "experiments/RAW-NAFNet-D600/figures"
 # Секция с путями к файлам данных
 data_files:
   train_metrics: "experiments/RAW-NAFNet-D600/train_metrics.csv"
-  pipeline_log: "samples/debug_pipeline/pipeline.log"
+  val_metrics: "experiments/RAW-NAFNet-D600/val_metrics.csv"
 
 baseline:
   psnr: 34.61
@@ -31,7 +31,7 @@ plots:
       x: step
       y: psnr
     smoothing: 0.95
-    y_lim: [0, 45]
+    y_lim: [3, 8]
     y_label: "PSNR (dB)"
     save: psnr_curve.png
 
@@ -53,19 +53,19 @@ plots:
       file_ref: train_metrics
       x: step
       y: psnr
-    baseline_value: 34.61
+    baseline_value: 6
     baseline_label: "Bilinear"
     y_label: "PSNR (dB)"
+    x_lim: [0, 150]   # добавить эту строку
     save: psnr_comparison.png
 
   - type: line
     title: "SSIM на валидации"
     data:
-      source: log
-      file_ref: pipeline_log
-      pattern: "SSIM = (\\d+\\.\\d+)"
-    smoothing: 1
-    y_lim: [0.5, 1.0]
+      source: val_csv
+      x: epoch
+      y: ssim
+    y_lim: [0.0, 0.5]      # ← измените на [0.0, 0.5] или уберите эту строку
     y_label: "SSIM"
     save: ssim_curve.png
 

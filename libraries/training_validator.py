@@ -30,6 +30,7 @@ class VisualValidator:
 
     def run_validation(self, model, epoch, device):
         """Прогоняет все тестовые файлы через модель и сохраняет результат"""
+        ssim_values = []
         if not os.path.exists(self.lq_val_dir):
             # print(f"⚠️ [Валидатор] Папка {self.lq_val_dir} не найдена. Пропускаем.")
             logger.warning(f"Папка {self.lq_val_dir} не найдена. Пропускаем.")
@@ -91,8 +92,13 @@ class VisualValidator:
                 out_name = f"epoch_{epoch}_{base_name}.png"
                 out_path = os.path.join(self.out_val_dir, out_name)
                 Image.fromarray(final_img).save(out_path)
-                
+            
+            ssim_values.append(ssim_val)
+        
         model.train()
+        mean_ssim = np.mean(ssim_values) if ssim_values else 0.0
+        logger.info(f"Средний SSIM за эпоху {epoch}: {mean_ssim:.4f}")
+        return mean_ssim
 
     def calculate_ssim(self, restored_path, gt_path):
         restored = np.array(Image.open(restored_path).convert('RGB'))

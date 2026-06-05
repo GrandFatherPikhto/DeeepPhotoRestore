@@ -99,7 +99,8 @@ def compute_metrics(out, target, criterion, loss_type):
         ffl_val = 0.0
 
     mse = nn.MSELoss()(out, target).detach()
-    psnr = torch.tensor(calculate_psnr(mse))   # превращаем float в тензор
+    # psnr = torch.tensor(calculate_psnr(mse))   # превращаем float в тензор
+    psnr = calculate_psnr(mse)
     return {
         'total_loss': total_loss,
         'l1_val': l1_val,

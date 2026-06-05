@@ -3,32 +3,30 @@ import sys
 
 def setup_logger(log_file="pipeline.log"):
     """
-    Инициализирует двухпоточную систему логирования по динамическому пути.
-    Вывод в консоль терминала + дублирование в файл на диске.
+    Инициализирует двухпоточную систему логирования.
+    При повторном вызове перенастраивает вывод в новый файл.
     """
     logger = logging.getLogger("TanahenPipeline")
     logger.setLevel(logging.INFO)
 
+    # Удаляем старые обработчики, чтобы перенастроить вывод
     if logger.handlers:
-        return logger
+        logger.handlers.clear()
 
     log_format = logging.Formatter(
         fmt="%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S"
     )
 
-    # Поток 1: Вывод в консоль
+    # Консольный обработчик
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(log_format)
     logger.addHandler(console_handler)
 
-    # ——— ДОБАВЛЯЕМ АВТО-СОЗДАНИЕ ПАПКИ ТУТ ———
+    # Файловый обработчик
     import os
     log_dir = os.path.dirname(os.path.abspath(log_file))
     os.makedirs(log_dir, exist_ok=True)
-    # —————————————————————————————————————————
-
-    # Поток 2: Запись в файл (теперь папка гарантированно существует!)
     file_handler = logging.FileHandler(log_file, encoding="utf-8")
     file_handler.setFormatter(log_format)
     logger.addHandler(file_handler)
