@@ -8,7 +8,7 @@ import subprocess
 import sys
 import shutil
 
-from libraries.pipeline_logger import get_logger
+from libraries.logger import get_logger
 
 logger = get_logger()
 

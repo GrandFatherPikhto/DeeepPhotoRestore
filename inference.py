@@ -9,117 +9,113 @@ import tifffile
 import numpy as np
 from PIL import Image
 import torchvision.transforms.functional as TF
-from libraries.pipeline_config import get_pipeline_config
+import yaml
+
 from libraries.pipeline_device import get_torch_device
 from libraries.pipeline_model import create_nafnet_model
-from libraries.training_checkpoint import load_checkpoint
-from libraries.pipeline_logger import setup_logger, get_logger
 from libraries.pipeline_generation_core import generate_lq_from_hq
+from libraries.pipeline_logger import setup_logger, get_logger
 
-def load_lq_image(path, target_size=256):
+def load_input(path, config, target_size=256):
     """
-    Загружает 4-канальный TIFF и приводит к размеру target_size x target_size.
-    Возвращает тензор [1, 4, H, W] float32 в диапазоне [0,1].
+    Загружает изображение и, если необходимо, применяет деградацию.
+    Возвращает:
+        tensor: torch.Tensor [1, 4, target_size, target_size] (LQ)
+        gt_tensor: torch.Tensor [1, 3, target_size, target_size] или None (если исходное RGB)
     """
-    # Читаем как float32, нормализуем, если uint16
-    img = tifffile.imread(path).astype(np.float32)
-    if img.max() > 1.0:
-        img = img / 65535.0
-    # Приводим к размеру (target_size, target_size)
-    h, w = img.shape[:2]
-    if h != target_size or w != target_size:
-        img = TF.resize(torch.from_numpy(img.transpose(2,0,1)), (target_size, target_size)).numpy().transpose(1,2,0)
-    # Тензор [C, H, W]
-    tensor = torch.from_numpy(img.transpose(2,0,1)).float().unsqueeze(0)  # [1,4,H,W]
-    return tensor
-
-def load_or_degrade_input(path, config, target_size=256):
-    # Проверяем, не TIFF ли с 4 каналами?
-    if path.lower().endswith('.tiff') or path.lower().endswith('.tif'):
+    # Попытка прочитать как 4-канальный TIFF (готовый LQ)
+    if path.lower().endswith(('.tiff', '.tif')):
         try:
             img = tifffile.imread(path)
             if img.ndim == 3 and img.shape[2] == 4:
-                # 4-канальный TIFF, считаем готовым LQ
+                # LQ готов
                 if img.dtype != np.float32:
                     img = img.astype(np.float32)
                 if img.max() > 1.0:
                     img = img / 65535.0
-                # Ресайз до target_size
+                # Ресайз
                 h, w = img.shape[:2]
                 if h != target_size or w != target_size:
                     img = TF.resize(torch.from_numpy(img.transpose(2,0,1)), (target_size, target_size)).numpy().transpose(1,2,0)
                 tensor = torch.from_numpy(img.transpose(2,0,1)).float().unsqueeze(0)
-                return tensor, None  # GT нет
-        except:
-            pass
-    # Иначе пробуем как RGB-изображение
+                return tensor, None
+        except Exception as e:
+            print(f"Не удалось прочитать TIFF как 4-канальный: {e}")
+
+    # Иначе читаем как обычное RGB и применяем деградацию
     rgb = np.array(Image.open(path).convert('RGB')).astype(np.float32) / 255.0
-    # Применяем деградацию (здесь нужно использовать те же параметры, что в обучении)
-    lq_packed, hq_target = generate_lq_from_hq(rgb, config)   # lq_packed форма (H, W, 4)
-    # Ресайз до target_size
+    lq_packed, hq_target = generate_lq_from_hq(rgb, config)  # lq_packed: (H, W, 4), hq_target: (H, W, 3)
+    # Приводим к целевому размеру
     h, w = lq_packed.shape[:2]
     if h != target_size or w != target_size:
         lq_packed = TF.resize(torch.from_numpy(lq_packed.transpose(2,0,1)), (target_size, target_size)).numpy().transpose(1,2,0)
-    tensor = torch.from_numpy(lq_packed.transpose(2,0,1)).float().unsqueeze(0)
-    return tensor, hq_target   # GT может быть использован для сравнения (опционально)
+        hq_target = TF.resize(torch.from_numpy(hq_target.transpose(2,0,1)), (target_size, target_size)).numpy().transpose(1,2,0)
+    lq_tensor = torch.from_numpy(lq_packed.transpose(2,0,1)).float().unsqueeze(0)
+    gt_tensor = torch.from_numpy(hq_target.transpose(2,0,1)).float().unsqueeze(0)
+    return lq_tensor, gt_tensor
 
 def main():
     parser = argparse.ArgumentParser(description="Inference with trained NAFNet")
-    parser.add_argument('-opt', required=True, help='Путь к конфигу (YAML)')
-    parser.add_argument('--input', required=True, help='Путь к входному 4-канальному TIFF')
-    parser.add_argument('--output', default='restored.png', help='Путь для сохранения результата (PNG)')
-    parser.add_argument('--checkpoint', default=None, help='Путь к чекпоинту (если не указан, берётся из конфига)')
+    parser.add_argument('-opt', required=True, help='Путь к конфигурационному YAML')
+    parser.add_argument('--input', required=True, help='Входное изображение (RGB JPEG/PNG или 4-канальный TIFF)')
+    parser.add_argument('--output', default='restored.png', help='Выходной PNG файл')
+    parser.add_argument('--checkpoint', default=None, help='Путь к чекпоинту (опционально)')
     args = parser.parse_args()
 
+    # Загрузка конфига
+    with open(args.opt, 'r', encoding='utf-8') as f:
+        config = yaml.safe_load(f)
+
     # Настройка логгера
-    opt = get_pipeline_config(args.opt) if hasattr(args, 'opt') else get_pipeline_config()  # небольшая адаптация
-    # На самом деле get_pipeline_config() читает args из sys.argv, но для чистоты передадим opt_path
-    # Упростим: загрузим конфиг вручную
-    import yaml
-    with open(args.opt, 'r') as f:
-        opt = yaml.safe_load(f)
-    log_cfg = opt.get('pipeline_logger', {})
+    log_cfg = config.get('pipeline_logger', {})
     log_file = log_cfg.get('log_file', 'pipeline.log')
     setup_logger(log_file)
     logger = get_logger()
 
     device = get_torch_device()
-    logger.info(f"Используется устройство: {device}")
+    logger.info(f"Устройство: {device}")
 
-    # Создаём модель
-    model = create_nafnet_model(opt, device)
+    # Создание модели
+    model = create_nafnet_model(config, device)
 
-    # Загружаем веса
-    checkpoint_path = args.checkpoint or opt['path'].get('resume_path', 'checkpoints/resume.pth')
-    if not os.path.exists(checkpoint_path):
-        logger.error(f"Чекпоинт не найден: {checkpoint_path}")
+    # Загрузка весов
+    ckpt_path = args.checkpoint or config['path'].get('resume_path', 'checkpoints/resume.pth')
+    if not os.path.exists(ckpt_path):
+        logger.error(f"Чекпоинт не найден: {ckpt_path}")
         sys.exit(1)
-
-    # load_checkpoint ожидает много аргументов, но нам нужны только веса. Загрузим вручную.
-    ckpt = torch.load(checkpoint_path, map_location=device)
+    ckpt = torch.load(ckpt_path, map_location=device)
     if 'model_state_dict' in ckpt:
         model.load_state_dict(ckpt['model_state_dict'])
     elif 'model' in ckpt:
         model.load_state_dict(ckpt['model'])
     else:
         model.load_state_dict(ckpt)
-    logger.info(f"Модель загружена из {checkpoint_path}")
+    logger.info(f"Модель загружена из {ckpt_path}")
 
-    # Загружаем входное изображение
-    input_tensor = load_lq_image(args.input, target_size=256).to(device)
+    # Подготовка входных данных
+    target_size = config.get('datasets', {}).get('train', {}).get('gt_size', 256)
+    lq_tensor, gt_tensor = load_input(args.input, config, target_size)
+    lq_tensor = lq_tensor.to(device)
 
     model.eval()
     with torch.no_grad():
-        output = model(input_tensor)
+        output = model(lq_tensor)
         if isinstance(output, dict):
             output = output['out']
 
-    # Преобразуем обратно в изображение
+    # Сохранение результата
     out_img = output.squeeze(0).cpu().clamp(0, 1).numpy().transpose(1,2,0)
     out_img = (out_img * 255).astype(np.uint8)
     Image.fromarray(out_img).save(args.output)
     logger.info(f"Результат сохранён в {args.output}")
 
+    # Если есть GT, можно посчитать PSNR/SSIM (опционально)
+    if gt_tensor is not None:
+        from skimage.metrics import peak_signal_noise_ratio, structural_similarity
+        gt = gt_tensor.squeeze(0).cpu().numpy().transpose(1,2,0)
+        psnr = peak_signal_noise_ratio(gt, out_img / 255.0, data_range=1)
+        ssim = structural_similarity(gt, out_img / 255.0, channel_axis=2, data_range=1)
+        logger.info(f"PSNR = {psnr:.2f} dB, SSIM = {ssim:.4f}")
 
 if __name__ == '__main__':
     main()

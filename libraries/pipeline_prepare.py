@@ -5,7 +5,7 @@
 
 import os
 import shutil
-from libraries.pipeline_logger import get_logger
+from libraries.logger import get_logger
 from libraries.pipeline_generation_io import process_source_images
 
 logger = get_logger()

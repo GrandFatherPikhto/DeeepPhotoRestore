@@ -9,7 +9,7 @@ path:
   path:
   source_images_dir: "/home/grand/Images/NEF_Test" # Либо ~, либо полный путь
   dataset_root: "datasets/nef_nafnet"        # Корневая папка сгенерированного датасета
-  resume_path: "checkpoints/resume_nef_nafnet.pth" # Путь сохранения/восстановления чекпоинта
+  resume_path: "experiments/{name}/checkpoints/resume_nef_nafnet.pth"
 
 datasets:
   train:
@@ -53,9 +53,10 @@ train:
     eta_min: 1e-7
 
 losses:
+  type: "combined"   # или "l1" для обычного L1Loss
   l1_weight: 1.0
-  ffl_weight: 0.5
-  ffl_alpha: 1.0
+  ffl_weight: 1.0
+  ffl_alpha: 1.0  
 
 # === НАСТРОЙКИ ТЕЛЕМЕТРИИ И КАСТОМНОГО ЛОГГЕРА ДЛЯ ДИССЕРТАЦИИ ===
 logger:
@@ -65,6 +66,7 @@ logger:
   csv_file_name: "train_metrics.csv" # имя CSV-файла
   log_csv: true                  # включаем запись в CSV
   file_log_freq: 1               # Как часто дописывать метрики в ФАЙЛ (каждый N-й батч)
+  log_loss_components: true      # записывать отдельно L1 и FFL
   
   # Настройки оперативного вывода на экран в процессе работы батчей
   include_in_console:
@@ -85,11 +87,13 @@ logger:
     log_ssim: true   # <-- новый флаг
 
 # Настройки визуального контроля и дебага
+# Настройки визуального контроля и дебага
 visuals_logger:
-  output_dir: "samples/debug_visuals"  # Папка, куда полетят файлы проверки
+  output_dir: "experiments/{name}/debug_visuals"
   lq_preview_name: "debug_lq_preview.png"
   gt_reference_name: "debug_gt_reference.png"
 
 # Настройки сквозного логирования процесса
 pipeline_logger:
-  log_file: "samples/debug_pipeline/pipeline.log"  # Путь к файлу лога  
+  log_file: "experiments/{name}/pipeline.log"
+

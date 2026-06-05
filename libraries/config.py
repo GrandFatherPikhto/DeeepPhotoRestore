@@ -1,7 +1,7 @@
 import argparse
 import os
 import yaml
-from libraries.pipeline_logger import get_logger
+from libraries.logger import get_logger
 
 logger = get_logger()
 
@@ -45,4 +45,18 @@ def get_pipeline_config():
     config["clean_training"] = args.clean_training
     config["resume"] = args.resume
     config["opt_path"] = args.opt
+
+    exp_name = config.get('name')
+    if exp_name:
+        vis_cfg = config.get('visuals_logger', {})
+        if 'output_dir' in vis_cfg:
+            vis_cfg['output_dir'] = vis_cfg['output_dir'].replace('{name}', exp_name)
+        log_cfg = config.get('pipeline_logger', {})
+        if 'log_file' in log_cfg:
+            log_cfg['log_file'] = log_cfg['log_file'].replace('{name}', exp_name)
+    
+    resume_cfg = config.get('path', {})
+    if 'resume_path' in resume_cfg:
+        resume_cfg['resume_path'] = resume_cfg['resume_path'].replace('{name}', exp_name)
+
     return config

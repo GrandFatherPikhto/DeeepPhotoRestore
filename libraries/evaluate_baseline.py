@@ -12,7 +12,7 @@ from PIL import Image
 from skimage.metrics import peak_signal_noise_ratio, structural_similarity
 from skimage.transform import resize
 from scipy.ndimage import zoom
-from libraries.pipeline_logger import get_logger
+from libraries.logger import get_logger
 
 logger = get_logger()
 

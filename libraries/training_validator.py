@@ -8,7 +8,7 @@ import torchvision.transforms as T
 
 from skimage.metrics import structural_similarity as ssim
 
-from libraries.pipeline_logger import get_logger
+from libraries.logger import get_logger
 
 
 class VisualValidator:

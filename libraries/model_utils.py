@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from basicsr.models.archs.NAFNet_arch import NAFNet
-from libraries.pipeline_logger import get_logger
+from libraries.logger import get_logger
 
 logger = get_logger()
 

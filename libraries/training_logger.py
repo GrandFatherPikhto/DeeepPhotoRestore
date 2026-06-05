@@ -3,7 +3,7 @@ import csv
 import numpy as np
 import torch
 from torch.utils.tensorboard import SummaryWriter
-from libraries.pipeline_logger import get_logger
+from libraries.logger import get_logger
 
 logger = get_logger()
 
@@ -23,16 +23,20 @@ class TrainingLogger:
         else:
             logger.info("TensorBoard отключен в настройках YAML.")
 
-        # ---- CSV логирование ----
+        # ---- CSV логирование (расширенное) ----
         self.log_csv = opt.get('logger', {}).get('log_csv', False)
+        self.log_loss_components = opt.get('logger', {}).get('log_loss_components', True)
+
         if self.log_csv:
             csv_filename = opt.get('logger', {}).get('csv_file_name', 'train_metrics.csv')
             self.csv_path = os.path.join(save_dir, csv_filename)
             self.csv_headers = [
                 'step', 'loss', 'psnr', 'lr',
                 'delta_psnr', 'grad_var', 'tv_ratio',
-                'vram_alloc_gb', 'vram_res_gb'
+                'vram_alloc_gb', 'vram_res_gb',
+                'l1_loss', 'ffl_loss'
             ]
+            # Создаём файл с заголовками, если его нет
             if not os.path.exists(self.csv_path):
                 with open(self.csv_path, 'w', newline='') as f:
                     writer = csv.writer(f)
@@ -40,10 +44,11 @@ class TrainingLogger:
                 logger.info(f"CSV лог создан: {self.csv_path}")
 
     def log_metrics(self, loss_val, psnr_val, lr_val, global_step,
-                    model=None, targets=None, outputs=None, device=None):
+                    model=None, targets=None, outputs=None, device=None,
+                    l1_loss_val=None, ffl_loss_val=None):
         """
-        Логирует метрики в TensorBoard, текстовый файл (train_progress.log)
-        и, при необходимости, в CSV.
+        Логирует метрики в TensorBoard, текстовый файл и CSV.
+        l1_loss_val, ffl_loss_val - дополнительные компоненты комбинированной потери.
         """
         # 1. TensorBoard
         if self.use_tb and self.tb_logger is not None:
@@ -51,7 +56,7 @@ class TrainingLogger:
             self.tb_logger.add_scalar('train/psnr', psnr_val, global_step)
             self.tb_logger.add_scalar('train/lr', lr_val, global_step)
 
-        # 2. Подготовка данных для логов (текстовый и CSV)
+        # 2. Подготовка данных для логов
         logger_opt = self.opt.get('logger', {})
         file_freq = logger_opt.get('file_log_freq', 1)
         delta_psnr = 0.0
@@ -104,18 +109,26 @@ class TrainingLogger:
                 log_parts.append(f"TV_Ratio: {tv_ratio:.3f}")
             if flags.get('vram_usage', True):
                 log_parts.append(f"VRAM: {alloc_vram:.2f}GB/{res_vram:.2f}GB")
+            # Дополнительные компоненты лосса (если есть и включены)
+            if self.log_loss_components and flags.get('l1_loss', False) and l1_loss_val is not None:
+                log_parts.append(f"L1: {l1_loss_val:.6f}")
+            if self.log_loss_components and flags.get('ffl_loss', False) and ffl_loss_val is not None:
+                log_parts.append(f"FFL: {ffl_loss_val:.6f}")
 
             log_string = " | ".join(log_parts) + "\n"
             with open(log_path, 'a', encoding='utf-8') as f:
                 f.write(log_string)
 
-        # 4. Запись в CSV (если включено)
+        # 4. Запись в CSV (всегда полный набор колонок)
         if self.log_csv:
+            l1 = l1_loss_val if l1_loss_val is not None else 0.0
+            ffl = ffl_loss_val if ffl_loss_val is not None else 0.0
             with open(self.csv_path, 'a', newline='') as f:
                 writer = csv.writer(f)
                 writer.writerow([
                     global_step, loss_val, psnr_val, lr_val,
-                    delta_psnr, grad_var, tv_ratio, alloc_vram, res_vram
+                    delta_psnr, grad_var, tv_ratio, alloc_vram, res_vram,
+                    l1, ffl
                 ])
 
     def log_validation_image(self, tag, image_tensor, epoch):

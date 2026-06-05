@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import sys
-from libraries.pipeline_config import get_pipeline_config
+from libraries.config import get_pipeline_config
 from libraries.evaluate_baseline import run_baseline_evaluation
-from libraries.pipeline_logger import setup_logger, get_logger
+from libraries.logger import setup_logger, get_logger
 
 def main():
     config = get_pipeline_config()

@@ -6,14 +6,14 @@ import sys
 import shutil
 import subprocess
 
-from libraries.pipeline_config import get_pipeline_config
-from libraries.pipeline_logger import setup_logger
-from libraries.pipeline_device import get_torch_device
+from libraries.config import get_pipeline_config
+from libraries.logger import setup_logger
+from libraries.device import get_torch_device
 # from libraries.pipeline_dataset import ensure_dataset_ready
 from libraries.pipeline_prepare import ensure_dataset_ready
 # from libraries.pipeline_dataset import create_restoration_dataset
 from libraries.pipeline_data import create_restoration_dataset
-from libraries.pipeline_model import create_nafnet_model
+from libraries.model_utils import create_nafnet_model
 from libraries.pipeline_visuals import run_visual_control
 from libraries.pipeline_smoke import run_smoke_test
 

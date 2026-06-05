@@ -5,7 +5,7 @@ import os
 import cv2
 import numpy as np
 import torch
-from libraries.pipeline_logger import get_logger
+from libraries.logger import get_logger
 
 logger = get_logger()
 

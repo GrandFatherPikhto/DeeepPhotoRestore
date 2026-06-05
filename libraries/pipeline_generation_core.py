@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 import cv2
-from libraries.pipeline_degradation_ops import (
+from libraries.degradation_ops import (
     create_psf_kernel, add_correlated_noise, add_uncorrelated_noise,
     apply_bayer_mask, extract_bayer_subchannels
 )
