@@ -1,4 +1,5 @@
 import os
+import sys
 import numpy as np
 import torch
 from torch.utils.data import Dataset
@@ -13,7 +14,10 @@ logger = get_logger()
 class RestorationDataset(Dataset):
     def __init__(self, config, is_train=True):
         self.is_train = is_train
-        dataset_root = config.get("dataset_root", "datasets/nef_nafnet")
+        path = config.get('path', None)
+        if path is None:
+            sys.exit(0)
+        dataset_root = path.get("dataset_root", "datasets/nef_nafnet")
         phase = "train" if is_train else "val"
         self.lq_dir = os.path.join(dataset_root, phase, "lq_inputs")
         self.hq_dir = os.path.join(dataset_root, phase, "hq_targets")

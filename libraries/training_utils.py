@@ -1,5 +1,6 @@
 import os
 import torch
+import shutil
 from torch.utils.data import DataLoader
 from libraries.config import get_pipeline_config
 from libraries.device import get_torch_device
@@ -60,15 +61,6 @@ def create_optimizer_and_scheduler(model, opt):
     )
     return optimizer, scheduler
 
-def cleanup_experiment(opt, save_dir, logger):
-    if opt.get('clean_training', False):
-        import shutil
-        if os.path.exists(save_dir):
-            logger.info(f"Очистка эксперимента: {save_dir}")
-            shutil.rmtree(save_dir)
-        os.makedirs(save_dir, exist_ok=True)
-        return True
-    return False
 
 def get_loss_criterion(opt, logger):
     loss_type = opt.get('losses', {}).get('type', 'l1')
@@ -107,3 +99,33 @@ def compute_metrics(out, target, criterion, loss_type):
         'ffl_val': ffl_val,
         'psnr': psnr
     }
+
+def cleanup_experiment(opt, save_dir, logger):
+    if not opt.get('clean_training', False):
+        return False
+
+    logger.info(f"Выборочная очистка файлов обучения в {save_dir} (оставляем debug_visuals и pipeline.log)")
+
+    # Удаляем папки, относящиеся к обучению
+    for subdir in ['checkpoints', 'tb_logs', 'val_predictions']:
+        subdir_path = os.path.join(save_dir, subdir)
+        if os.path.exists(subdir_path):
+            shutil.rmtree(subdir_path)
+            logger.info(f"Удалена папка: {subdir_path}")
+
+    # Удаляем файлы метрик обучения
+    for filename in ['train_metrics.csv', 'train_progress.log', 'val_metrics.csv']:
+        file_path = os.path.join(save_dir, filename)
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            logger.info(f"Удалён файл: {file_path}")
+
+    # Папку debug_visuals и файл pipeline.log НЕ удаляем
+    # (они могут быть созданы run_pipeline.py)
+
+    # Пересоздаём основные папки, чтобы избежать ошибок при записи
+    os.makedirs(os.path.join(save_dir, 'checkpoints'), exist_ok=True)
+    os.makedirs(os.path.join(save_dir, 'tb_logs'), exist_ok=True)
+    os.makedirs(os.path.join(save_dir, 'val_predictions'), exist_ok=True)
+
+    return True

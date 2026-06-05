@@ -1,0 +1,34 @@
+# ==============================================================================
+# Инференс предобученной модели NAFNet-SIDD-width32
+# ==============================================================================
+
+name: "Pretrained_SIDD32_20"          # имя эксперимента (используется в логах)
+manual_seed: 42
+
+# --- ПУТИ ---
+paths:
+  input_tiff: "datasets/nef_nafnet_20/test/lq_inputs/DSC_0415_bayer.tiff"
+  gt_png: "datasets/nef_nafnet_20/test/hq_targets/DSC_0415.png"   # эталон (опционально)
+  output_dir: "experiments/pretrained/SIDD32_20/results"
+  checkpoint: "pretrained/NAFNet-SIDD-width32.pth"
+
+# --- АРХИТЕКТУРА СЕТИ (должна совпадать с загружаемой моделью) ---
+network_g:
+  type: NAFNet
+  num_in_ch: 3                     # предобученные модели ожидают RGB
+  num_out_ch: 3
+  width: 32                        # соответствует суффиксу "width32"
+  middle_blk_num: 12
+  enc_blk_nums: [2, 2, 4, 8]
+  dec_blk_nums: [2, 2, 2, 2]
+
+# --- ПАРАМЕТРЫ ОБРАБОТКИ ---
+processing:
+  mode: "full"                    # "full" (целиком) или "patch"
+  patch_size: 256                 # размер патча (если mode=patch)
+  overlap: 32                     # перекрытие патчей (для плавной сборки)
+  bilinear_demosaic: true
+
+# --- ЛОГИРОВАНИЕ ---
+pipeline_logger:
+  log_file: "experiments/pretrained/SIDD32_20/pipeline.log"

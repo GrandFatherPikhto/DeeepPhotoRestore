@@ -54,3 +54,6 @@ modules/NAFNet/basicsr
 
 # *.png
 *.png
+
+# *.pth -- файлы обучения (или предобученные модели)
+*.pth

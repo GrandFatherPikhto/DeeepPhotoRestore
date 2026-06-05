@@ -2,14 +2,14 @@
 # КОНФИГУРАЦИОННЫЙ ФАЙЛ ДЛЯ ОБУЧЕНИЯ NAFNET НА RAW ДАННЫХ (NIKON D600)
 # ==============================================================================
 
-name: RAW-NAFNet-D600            # Название эксперимента (имя папки в experiments/)
+name: RAW-NAFNet-Test03          # Название эксперимента (имя папки в experiments/)
 manual_seed: 42                  # Фиксация случайных чисел для воспроизводимости в диссертации
 
 path:
   path:
-  source_images_dir: "/home/grand/Images/NEF" # Либо ~, либо полный путь
-  dataset_root: "datasets/nef_nafnet"        # Корневая папка сгенерированного датасета
-  resume_path: "experiments/{name}/checkpoints/resume_nef_nafnet.pth"
+  source_images_dir: "/home/grand/Images/NEF_Test_03" # Либо ~, либо полный путь
+  dataset_root: "datasets/nef_nafnet_03"        # Корневая папка сгенерированного датасета
+  resume_path: "experiments/{name}/checkpoints/resume_nef_nafnet_03.pth"
 
 datasets:
   train:
@@ -53,10 +53,11 @@ train:
     eta_min: 1e-7
 
 losses:
-  type: "combined"   # или "l1" для обычного L1Loss
+  type: "combined"
   l1_weight: 1.0
-  ffl_weight: 1.0
-  ffl_alpha: 1.0  
+  ffl_weight: 0.5                 # для логического FFL можно попробовать 0.1
+  ffl_alpha: 1.0
+  ffl_type: "log"                  # "linear" или "log", но linear -- это ппц. пришлось для 3х изображений делать ffl_weight: 0.01036  
 
 # === НАСТРОЙКИ ТЕЛЕМЕТРИИ И КАСТОМНОГО ЛОГГЕРА ДЛЯ ДИССЕРТАЦИИ ===
 logger:

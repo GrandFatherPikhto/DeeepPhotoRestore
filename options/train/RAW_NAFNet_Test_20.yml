@@ -2,14 +2,14 @@
 # КОНФИГУРАЦИОННЫЙ ФАЙЛ ДЛЯ ОБУЧЕНИЯ NAFNET НА RAW ДАННЫХ (NIKON D600)
 # ==============================================================================
 
-name: RAW-NAFNet-D600            # Название эксперимента (имя папки в experiments/)
+name: RAW-NAFNet-Test-20          # Название эксперимента (имя папки в experiments/)
 manual_seed: 42                  # Фиксация случайных чисел для воспроизводимости в диссертации
 
 path:
   path:
-  source_images_dir: "/home/grand/Images/NEF" # Либо ~, либо полный путь
-  dataset_root: "datasets/nef_nafnet"        # Корневая папка сгенерированного датасета
-  resume_path: "experiments/{name}/checkpoints/resume_nef_nafnet.pth"
+  source_images_dir: "/home/grand/Images/NEF_Test_20" # Либо ~, либо полный путь
+  dataset_root: "datasets/nef_nafnet_20"        # Корневая папка сгенерированного датасета
+  resume_path: "experiments/{name}/checkpoints/resume_nef_nafnet_20.pth"
 
 datasets:
   train:
@@ -55,7 +55,7 @@ train:
 losses:
   type: "combined"   # или "l1" для обычного L1Loss
   l1_weight: 1.0
-  ffl_weight: 1.0
+  ffl_weight: 0.0087
   ffl_alpha: 1.0  
 
 # === НАСТРОЙКИ ТЕЛЕМЕТРИИ И КАСТОМНОГО ЛОГГЕРА ДЛЯ ДИССЕРТАЦИИ ===

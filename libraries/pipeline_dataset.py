@@ -39,7 +39,11 @@ def ensure_dataset_ready(config, opt_path, clean_dataset=False):
     Если clean_dataset=True – сначала очищает train/test.
     Если датасет пуст – запускает prepare_dataset.py.
     """
-    dataset_root = config.get("dataset_root", "datasets/nef_nafnet")
+    path = config.get('path', None)
+    if path is None:
+        sys.exit(0)
+
+    dataset_root = path.get("dataset_root", "datasets/nef_nafnet")
     logger.info(f"Работа с датасетом, корень: {dataset_root}")
 
     if clean_dataset:

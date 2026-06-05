@@ -84,7 +84,6 @@ def main():
 
             val_freq = train_cfg.get('validation_freq', 1)   # по умолчанию 1
             if (epoch + 1) % val_freq == 0:
-                validator.run_validation(model, epoch, device)
                 mean_ssim = validator.run_validation(model, epoch, device)
                 train_logger.log_validation_metrics(epoch, mean_ssim)
 

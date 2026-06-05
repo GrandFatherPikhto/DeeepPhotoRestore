@@ -1,0 +1,33 @@
+# ==============================================================================
+# Инференс предобученной модели NAFNet-SIDD-width32
+# ==============================================================================
+
+name: "GoPro_64_20"          # имя эксперимента (используется в логах)
+manual_seed: 42
+
+# --- ПУТИ ---
+paths:
+  input_tiff: "datasets/nef_nafnet_20/test/lq_inputs/DSC_0415_bayer.tiff"
+  gt_png: "datasets/nef_nafnet_20/test/hq_targets/DSC_0415.png"   # эталон (опционально)
+  output_dir: "experiments/pretrained/GoPro64_20/results"
+  checkpoint: "pretrained/NAFNet-GoPro-width64.pth"
+
+# --- АРХИТЕКТУРА СЕТИ (должна совпадать с загружаемой моделью) ---
+network_g:
+  num_in_ch: 3
+  num_out_ch: 3
+  width: 32
+  enc_blk_nums: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]   # 10 единиц
+  middle_blk_num: 1
+  dec_blk_nums: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+
+# --- ПАРАМЕТРЫ ОБРАБОТКИ ---
+processing:
+  mode: "patch"                    # "full" (целиком) или "patch"
+  patch_size: 32                 # размер патча (если mode=patch)
+  overlap: 8                     # перекрытие патчей (для плавной сборки)
+  bilinear_demosaic: true
+
+# --- ЛОГИРОВАНИЕ ---
+pipeline_logger:
+  log_file: "experiments/pretrained/GoPro64_20/pipeline.log"
