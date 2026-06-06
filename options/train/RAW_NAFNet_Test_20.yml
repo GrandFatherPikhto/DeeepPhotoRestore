@@ -10,6 +10,7 @@ path:
   source_images_dir: "/home/grand/Images/NEF_Test_20" # Либо ~, либо полный путь
   dataset_root: "datasets/nef_nafnet_20"        # Корневая папка сгенерированного датасета
   resume_path: "experiments/{name}/checkpoints/resume_nef_nafnet_20.pth"
+  pretrain_network_g: "pretrained/NAFNet-SIDD-width32.pth"
 
 datasets:
   train:
@@ -37,32 +38,29 @@ network_g:
   class_name: "NAFNet"           # Имя класса внутри файла архитектуры
   num_in_ch: 4                   # КРИТИЧЕСКИ: 4 входных канала мозаики матрицы (R, G1, G2, B)
   num_out_ch: 3                  # КРИТИЧЕСКИ: 3 выходных канала целевого RGB референса
-  width: 64                      # Базовая ширина сверточных каналов в блоках NAFNet
+  width: 32                      # Базовая ширина сверточных каналов в блоках NAFNet
   enc_blk_nums: [2, 2, 4, 8]     # Количество блоков на этапах кодировщика (Encoder)
   middle_blk_num: 12             # Количество блоков в латентном пространстве (Bottleneck)
   dec_blk_nums: [2, 2, 2, 2]     # Количество блоков на этапах декодировщика (Decoder)
+  upscale_factor: 2              # Или 8, но карта слетает
 
 # === ПАРАМЕТРЫ ЦИКЛА ОБУЧЕНИЯ ===
 train:
   validation_freq: 1            # валидация каждую эпоху (можно 2, 3...)
   save_checkpoint_epoch: 5      # Сохранять чекпоинты
   optim_g:
-    lr: 1e-3
-    weight_decay: 0
+    lr: 1e-4
+    weight_decay: 1e-5   # добавьте
     betas: [0.9, 0.9]
-  num_epochs: 500
+  num_epochs: 200
   scheduler:
     eta_min: 1e-7
 
 losses:
-#   l1_weight: 1.0
-#   ffl_weight: 0.5                 # для логического FFL можно попробовать 0.1
-#   ffl_alpha: 1.0
-#   ffl_type: "log"                  # "linear" или "log", но linear -- это ппц. пришлось для 3х изображений делать ffl_weight: 0.0087  
   type: "combined"
   l1_weight: 0.5         # 🎯 Снижаем вес пространственного заглаживания
   ffl_weight: 1.5         # 🎯 ТРЕХКРАТНО поднимаем вес частотной резкости!
-  ffl_alpha: 2.0          # 🎯 Фокусируемся строго на микроконтурах лепестков
+  ffl_alpha: 2.0          # 🎯 сильно фокусируется на высоких частотах — поможет восстановить резкость, но может привести к шуму
   ffl_log_factor: 100.0   # Оставляем наш патентованный логарифмический сжатый спектр
   ffl_type: "log"                  # "linear" или "log", но linear -- это ппц. пришлось для 3х изображений делать ffl_weight: 0.0087  
 

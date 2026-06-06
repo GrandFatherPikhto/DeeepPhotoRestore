@@ -19,7 +19,12 @@ def main():
     ignore_resume = cleanup_experiment(opt, save_dir, logger)
 
     train_loader = create_train_loader(opt)
-    model = create_nafnet_model(opt, device)
+    pretrained_path = opt.get('path', {}).get('pretrain_network_g', None)
+    model = create_nafnet_model(opt, device, pretrained_path=pretrained_path)
+    for name, param in model.net.named_parameters():
+        if 'intro' not in name and 'ending' not in name:
+            param.requires_grad = False
+            
     optimizer, scheduler = create_optimizer_and_scheduler(model, opt)
 
     train_logger = TrainingLogger(opt, save_dir)

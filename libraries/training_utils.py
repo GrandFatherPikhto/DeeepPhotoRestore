@@ -58,10 +58,17 @@ def create_train_loader(opt):
 def create_optimizer_and_scheduler(model, opt):
     train_cfg = opt['train']
     optim_cfg = train_cfg['optim_g']
+    weight_decay_val = optim_cfg.get('weight_decay', 0.0)
+    # Преобразуем в float, если пришло строкой
+    try:
+        weight_decay_val = float(weight_decay_val)
+    except (TypeError, ValueError):
+        weight_decay_val = 0.0
+
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=float(optim_cfg['lr']),
-        weight_decay=optim_cfg.get('weight_decay', 0.0),
+        weight_decay=weight_decay_val,
         betas=optim_cfg.get('betas', (0.9, 0.999))
     )
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(

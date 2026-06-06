@@ -27,14 +27,16 @@ class CustomNEFPairDataset(Dataset):
         
         # Читаем параметры из конфига
         train_cfg = opt.get('datasets', {}).get('train', {}) if opt else {}
+        # self.upscale_factor = opt.get('datasets', {}).get('train', {}).get('upscale_factor', 2)
+        self.upscale_factor = opt.get('datasets', {}).get('train', {}).get('upscale_factor', 2)
         self.gt_size = train_cfg.get('gt_size', 256)   # размер HQ (должен быть 2 * lq_size)
         self.lq_size = train_cfg.get('lq_size', 128)
         self.use_flip = train_cfg.get('use_flip', False)
         self.use_rot = train_cfg.get('use_rot', False)
         
         # Проверка соотношения размеров
-        assert self.gt_size == 2 * self.lq_size, \
-            f"gt_size ({self.gt_size}) must be 2 * lq_size ({self.lq_size})"
+        assert self.gt_size == self.upscale_factor * self.lq_size, \
+            f"gt_size ({self.gt_size}) must be {self.upscale_factor} * lq_size ({self.lq_size})"
 
     def __len__(self):
         return len(self.filenames)
@@ -55,12 +57,18 @@ class CustomNEFPairDataset(Dataset):
         h_hq, w_hq = gt_rgb.shape[:2]
         
         # Проверка соотношения масштабов (HQ должно быть в 2 раза больше LQ)
-        if h_hq != 2 * h_lq or w_hq != 2 * w_lq:
-            # Если нет – делаем ресайз HQ к правильному размеру (аварийно)
+        # if h_hq != 2 * h_lq or w_hq != 2 * w_lq:
+        #     # Если нет – делаем ресайз HQ к правильному размеру (аварийно)
+        #     from skimage.transform import resize
+        #     new_h, new_w = 2 * h_lq, 2 * w_lq
+        #     gt_rgb = resize(gt_rgb, (new_h, new_w), preserve_range=True)
+        #     h_hq, w_hq = new_h, new_w
+        target_h = self.upscale_factor * h_lq
+        target_w = self.upscale_factor * w_lq
+        if h_hq != target_h or w_hq != target_w:
             from skimage.transform import resize
-            new_h, new_w = 2 * h_lq, 2 * w_lq
-            gt_rgb = resize(gt_rgb, (new_h, new_w), preserve_range=True)
-            h_hq, w_hq = new_h, new_w
+            gt_rgb = resize(gt_rgb, (target_h, target_w), preserve_range=True)
+            h_hq, w_hq = target_h, target_w        
         
         # --- Академический случайный кроп (одинаковая геометрия для LQ и HQ) ---
         # Кроп LQ размера lq_size x lq_size
