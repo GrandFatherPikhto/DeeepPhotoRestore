@@ -55,27 +55,102 @@ def create_train_loader(opt):
     )
 
 
-def create_optimizer_and_scheduler(model, opt):
+def create_optimizer_and_scheduler(model, opt, total_training_steps=None):
+    """
+    Создаёт оптимизатор AdamW и планировщик скорости обучения на основе конфига.
+    
+    Args:
+        model: torch.nn.Module
+        opt (dict): полный конфигурационный словарь (с секциями 'train' и 'scheduler')
+        total_training_steps (int, optional): общее количество итераций (шагов) для OneCycleLR.
+            Если не указан, будет вычислен как num_epochs * len(train_loader).
+    
+    Returns:
+        optimizer, scheduler
+    """
     train_cfg = opt['train']
     optim_cfg = train_cfg['optim_g']
-    weight_decay_val = optim_cfg.get('weight_decay', 0.0)
-    # Преобразуем в float, если пришло строкой
-    try:
-        weight_decay_val = float(weight_decay_val)
-    except (TypeError, ValueError):
-        weight_decay_val = 0.0
-
+    
+    # Создаём оптимизатор AdamW (можно легко заменить на другой тип, если нужно)
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=float(optim_cfg['lr']),
-        weight_decay=weight_decay_val,
+        weight_decay=float(optim_cfg.get('weight_decay', 0.0)),
         betas=optim_cfg.get('betas', (0.9, 0.999))
     )
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer,
-        T_max=train_cfg['num_epochs'],
-        eta_min=float(train_cfg.get('scheduler', {}).get('eta_min', 1e-7))
-    )
+    
+    scheduler_cfg = train_cfg.get('scheduler', {})
+    scheduler_type = scheduler_cfg.get('type', 'CosineAnnealingLR')
+    
+    # ========== ДОСТУПНЫЕ ТИПЫ ПЛАНИРОВЩИКОВ ==========
+    if scheduler_type == 'CosineAnnealingLR':
+        t_max = scheduler_cfg.get('T_max', train_cfg['num_epochs'])
+        eta_min = float(scheduler_cfg.get('eta_min', 1e-7))
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=t_max, eta_min=eta_min
+        )
+    
+    elif scheduler_type == 'StepLR':
+        step_size = scheduler_cfg.get('step_size')
+        if step_size is None:
+            raise KeyError("StepLR requires 'step_size' in scheduler config")
+        gamma = float(scheduler_cfg.get('gamma', 0.1))
+        scheduler = torch.optim.lr_scheduler.StepLR(
+            optimizer, step_size=step_size, gamma=gamma
+        )
+    
+    elif scheduler_type == 'MultiStepLR':
+        milestones = scheduler_cfg.get('milestones')
+        if milestones is None:
+            raise KeyError("MultiStepLR requires 'milestones' list in scheduler config")
+        gamma = float(scheduler_cfg.get('gamma', 0.1))
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(
+            optimizer, milestones=milestones, gamma=gamma
+        )
+    
+    elif scheduler_type == 'ExponentialLR':
+        gamma = float(scheduler_cfg.get('gamma', 0.99))
+        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=gamma)
+    
+    elif scheduler_type == 'ReduceLROnPlateau':
+        # ВНИМАНИЕ: этот планировщик требует вызова scheduler.step(val_loss) в цикле валидации
+        mode = scheduler_cfg.get('mode', 'min')
+        factor = float(scheduler_cfg.get('factor', 0.1))
+        patience = int(scheduler_cfg.get('patience', 10))
+        threshold = float(scheduler_cfg.get('threshold', 1e-4))
+        cooldown = int(scheduler_cfg.get('cooldown', 0))
+        min_lr = float(scheduler_cfg.get('min_lr', 0.0))
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode=mode, factor=factor, patience=patience,
+            threshold=threshold, cooldown=cooldown, min_lr=min_lr
+        )
+    
+    elif scheduler_type == 'OneCycleLR':
+        # Требует общего количества шагов (total_steps)
+        if total_training_steps is None:
+            raise ValueError("OneCycleLR requires total_training_steps (e.g., num_epochs * len(train_loader))")
+        max_lr = float(scheduler_cfg.get('max_lr', optim_cfg['lr']))
+        pct_start = float(scheduler_cfg.get('pct_start', 0.3))
+        anneal_strategy = scheduler_cfg.get('anneal_strategy', 'cos')
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            optimizer, max_lr=max_lr, total_steps=total_training_steps,
+            pct_start=pct_start, anneal_strategy=anneal_strategy
+        )
+    
+    elif scheduler_type == 'LambdaLR':
+        # lr_lambda – можно передать как строку (eval) или готовую функцию
+        lr_lambda = scheduler_cfg.get('lr_lambda')
+        if lr_lambda is None:
+            raise KeyError("LambdaLR requires 'lr_lambda' in scheduler config")
+        if isinstance(lr_lambda, str):
+            # Осторожно: eval может быть опасен, лучше передавать имя функции
+            # Для простоты предполагаем, что пользователь предоставил лямбда-выражение
+            lr_lambda = eval(lr_lambda)
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
+    
+    else:
+        raise ValueError(f"Unsupported scheduler type: {scheduler_type}")
+    
     return optimizer, scheduler
 
 

@@ -24,8 +24,9 @@ def main():
     for name, param in model.net.named_parameters():
         if 'intro' not in name and 'ending' not in name:
             param.requires_grad = False
-            
-    optimizer, scheduler = create_optimizer_and_scheduler(model, opt)
+
+    total_steps = len(train_loader) * opt['train']['num_epochs']       
+    optimizer, scheduler = create_optimizer_and_scheduler(model, opt, total_training_steps=total_steps)
 
     train_logger = TrainingLogger(opt, save_dir)
     validator = VisualValidator(opt)
