@@ -53,16 +53,16 @@ pip install -r requirements.txt
 
 | Файл | Описание |
 |------|----------|
-| [INSTALL.md](INSTALL.md) | Установка окружения, PyTorch, интеграция NAFNet |
-| [PIPELINE.md](PIPELINE.md) | Генерация датасета, визуальный контроль, smoke‑тест |
-| [TRAINING.md](TRAINING.md) | Обучение модели, гиперпараметры, валидация |
-| [CONFIG.md](CONFIG.md) | Полный справочник по YAML‑конфигурации |
-| [PLOT.md](PLOT.md) | Построение графиков из логов |
-| [EVALUATE.md](EVALUATE.md) | Оценка baseline (билинейная, MHC) |
-| [PRETRAINED.md](PRETRAINED.md) | Инференс предобученных моделей NAFNet |
-| [VIDEO.md](VIDEO.md) | Восстановление видео |
-| [ALGORITHM.md](ALGORITHM.md) | Псевдокод ключевых алгоритмов |
-| [CHANGES.md](CHANGES.md) | История критических исправлений |
+| [INSTALL.md](docs/INSTALL.md) | Установка окружения, PyTorch, интеграция NAFNet |
+| [PIPELINE.md](docs/PIPELINE.md) | Генерация датасета, визуальный контроль, smoke‑тест |
+| [TRAINING.md](docs/TRAINING.md) | Обучение модели, гиперпараметры, валидация |
+| [CONFIG.md](docs/CONFIG.md) | Полный справочник по YAML‑конфигурации |
+| [PLOT.md](docs/PLOT.md) | Построение графиков из логов |
+| [EVALUATE.md](docs/EVALUATE.md) | Оценка baseline (билинейная, MHC) |
+| [PRETRAINED.md](docs/PRETRAINED.md) | Инференс предобученных моделей NAFNet |
+| [VIDEO.md](docs/VIDEO.md) | Восстановление видео |
+| [ALGORITHM.md](docs/ALGORITHM.md) | Псевдокод ключевых алгоритмов |
+| [CHANGES.md](docs/CHANGES.md) | История критических исправлений |
 
 ---
 
@@ -110,4 +110,3 @@ DeepPhotoRestore/
 - Указана структура проекта.
 - Сохранена лаконичность, но добавлена полезная информация.
 
-Если хотите что‑то изменить (например, убрать `process_video.py` или добавить пример конфига) – скажите, я поправлю.
