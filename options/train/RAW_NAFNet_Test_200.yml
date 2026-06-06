@@ -2,14 +2,14 @@
 # КОНФИГУРАЦИОННЫЙ ФАЙЛ ДЛЯ ОБУЧЕНИЯ NAFNET НА RAW ДАННЫХ (NIKON D600)
 # ==============================================================================
 
-name: RAW-NAFNet-Test-20          # Название эксперимента (имя папки в experiments/)
+name: RAW-NAFNet-Test-200          # Название эксперимента (имя папки в experiments/)
 manual_seed: 42                  # Фиксация случайных чисел для воспроизводимости в диссертации
 
 path:
   path:
-  source_images_dir: "/home/grand/Images/NEF_Test_20" # Либо ~, либо полный путь
-  dataset_root: "datasets/nef_nafnet_20"        # Корневая папка сгенерированного датасета
-  resume_path: "experiments/{name}/checkpoints/resume_nef_nafnet_20.pth"
+  source_images_dir: "/home/grand/Images/NEF_Test_200" # Либо ~, либо полный путь
+  dataset_root: "datasets/nef_nafnet_200"        # Корневая папка сгенерированного датасета
+  resume_path: "experiments/{name}/checkpoints/resume_nef_nafnet_200.pth"
 
 datasets:
   train:
@@ -18,8 +18,8 @@ datasets:
     num_worker_per_gpu: 4        # 🎯 Задействует 4 потока CPU для предзагрузки данных в GPU
     auto_resume: true            # Автоматически продолжать обучение с последнего чекпоинта
     save_checkpoint_epoch: 5     # Как часто делать валидацию и сохранять веса (в эпохах)
-    gt_size: 256                 # Размер целевого RGB изображения (HQ)
-    lq_size: 128                 # Размер входного подканала RAW (LQ)    
+    gt_size: 512                 # Размер целевого RGB изображения (HQ)
+    lq_size: 256                 # Размер входного подканала RAW (LQ)    
 
 # === КОНФИГУРАЦИЯ ФИЗИЧЕСКОЙ ДЕГРАДАЦИИ СИГНАЛА (п. 12 ТЗ) ===
 process_data:
@@ -28,7 +28,7 @@ process_data:
     add: true                    # Флаг добавления шума (п. 12.4)
     snr_db: 20                   # Требуемое отношение сигнал/шум в децибелах
     correlated: true             # Включение КОРРЕЛИРОВАННОГО шума (свёртка с ЧКХ, п. 12.7)
-    psf_sigma: 0.5               # Параметр размытия оптической системы (сигма Гауссианы)
+    psf_sigma: 1.5               # Параметр размытия оптической системы (сигма Гауссианы)
 
 # === НАСТРОЙКИ СЕТИ ДЛЯ ИМПОРТА И АДАПТАЦИИ NAFNET ===
 network_g:
@@ -55,16 +55,12 @@ train:
     eta_min: 1e-7
 
 losses:
-#   l1_weight: 1.0
-#   ffl_weight: 0.5                 # для логического FFL можно попробовать 0.1
-#   ffl_alpha: 1.0
-#   ffl_type: "log"                  # "linear" или "log", но linear -- это ппц. пришлось для 3х изображений делать ffl_weight: 0.0087  
   type: "combined"
-  l1_weight: 0.5         # 🎯 Снижаем вес пространственного заглаживания
-  ffl_weight: 1.5         # 🎯 ТРЕХКРАТНО поднимаем вес частотной резкости!
-  ffl_alpha: 2.0          # 🎯 Фокусируемся строго на микроконтурах лепестков
-  ffl_log_factor: 100.0   # Оставляем наш патентованный логарифмический сжатый спектр
+  l1_weight: 1.0
+  ffl_weight: 0.5                 # для логического FFL можно попробовать 0.1
+  ffl_alpha: 1.0
   ffl_type: "log"                  # "linear" или "log", но linear -- это ппц. пришлось для 3х изображений делать ffl_weight: 0.0087  
+
 
 # === НАСТРОЙКИ ТЕЛЕМЕТРИИ И КАСТОМНОГО ЛОГГЕРА ДЛЯ ДИССЕРТАЦИИ ===
 logger:

@@ -2,9 +2,14 @@
 # -*- coding: utf-8 -*-
 
 import os
+import sys
 import cv2
 import numpy as np
 import torch
+
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+
 from libraries.logger import get_logger
 
 logger = get_logger()

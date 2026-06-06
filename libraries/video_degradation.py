@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import sys
 import numpy as np
 import torch
+
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+
 import torchvision.transforms.functional as TF
 from libraries.pipeline_generation_core import generate_lq_from_hq
 

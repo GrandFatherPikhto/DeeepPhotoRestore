@@ -1,5 +1,9 @@
+import sys
 import torch
 import torch.nn as nn
+
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
 
 class FocalFrequencyLoss(nn.Module):
     """

@@ -35,8 +35,17 @@ def setup_experiment():
     return opt, save_dir, device, logger
 
 def create_train_loader(opt):
-    dataset = create_restoration_dataset(opt, is_train=True)
+    # Извлекаем пути и параметры датасета из общего конфига
+    path_cfg = opt['path']
     train_cfg = opt['datasets']['train']
+    
+    dataroot_lq = os.path.join(path_cfg['dataset_root'], 'train', 'lq_inputs')
+    dataroot_gt = os.path.join(path_cfg['dataset_root'], 'train', 'hq_targets')
+    
+    # Передаем конфигурацию opt целиком в конструктор датасета
+    from libraries.training_dataset_nef import CustomNEFPairDataset
+    dataset = CustomNEFPairDataset(dataroot_lq, dataroot_gt, opt=opt)
+    
     return DataLoader(
         dataset,
         batch_size=train_cfg['batch_size_per_gpu'],
@@ -44,6 +53,7 @@ def create_train_loader(opt):
         num_workers=train_cfg.get('num_worker_per_gpu', 4),
         pin_memory=(torch.cuda.is_available())
     )
+
 
 def create_optimizer_and_scheduler(model, opt):
     train_cfg = opt['train']

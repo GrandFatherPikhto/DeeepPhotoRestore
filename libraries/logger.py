@@ -1,6 +1,9 @@
 import logging
 import sys
 
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+
 def setup_logger(log_file="pipeline.log"):
     """
     Инициализирует двухпоточную систему логирования.

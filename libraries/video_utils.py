@@ -2,7 +2,12 @@
 # -*- coding: utf-8 -*-
 
 import cv2
+import sys
 import numpy as np
+
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+
 import torch
 import torchvision.transforms.functional as TF
 

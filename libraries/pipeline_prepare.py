@@ -4,7 +4,12 @@
 """
 
 import os
+import sys
 import shutil
+
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+
 from libraries.logger import get_logger
 from libraries.pipeline_generation_io import process_source_images
 

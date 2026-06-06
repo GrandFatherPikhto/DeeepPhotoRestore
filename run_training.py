@@ -54,6 +54,7 @@ def main():
                 metrics = compute_metrics(out, hq, criterion, loss_type)
 
                 metrics['total_loss'].backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)  # ← добавить
                 optimizer.step()
 
                 current_lr = optimizer.param_groups[0]['lr']
@@ -88,11 +89,13 @@ def main():
                 train_logger.log_validation_metrics(epoch, mean_ssim)
 
             if (epoch + 1) % save_every == 0:
-                save_checkpoint(checkpoint_path, epoch, batch_idx, model, optimizer, scheduler, global_step, is_emergency=False)
+                # При плановом сохранении
+                save_checkpoint(checkpoint_path, epoch, 0, model, optimizer, scheduler, global_step, is_emergency=False)
                 logger.info(f"Чекпоинт сохранён для эпохи {epoch+1}")
 
     except KeyboardInterrupt:
         logger.warning("Прерывание по Ctrl+C, аварийное сохранение...")
+        # При аварийном сохранении (KeyboardInterrupt)
         save_checkpoint(checkpoint_path, epoch, batch_idx, model, optimizer, scheduler, global_step, is_emergency=True)
         train_logger.close()
         sys.exit(0)

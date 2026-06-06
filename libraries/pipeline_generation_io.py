@@ -1,11 +1,16 @@
 # -*- coding: utf-8 -*-
 import os
+import sys
 import random
 import numpy as np
 import imageio.v3 as iio
 import tifffile
 from PIL import Image
 from tqdm import tqdm
+
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+
 from libraries.pipeline_generation_core import generate_lq_from_hq
 from libraries.logger import get_logger
 

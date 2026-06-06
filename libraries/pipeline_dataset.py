@@ -8,6 +8,9 @@ import subprocess
 import sys
 import shutil
 
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+
 from libraries.logger import get_logger
 
 logger = get_logger()

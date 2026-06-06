@@ -5,6 +5,10 @@ import sys
 import cv2
 import torch
 from tqdm import tqdm
+
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+
 from libraries.logger import get_logger
 
 logger = get_logger()

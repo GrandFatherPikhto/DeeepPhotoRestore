@@ -3,7 +3,11 @@
 Модуль определения вычислительного устройства (CPU/CUDA).
 """
 
+import sys
 import torch
+
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
 
 def get_torch_device():
     """

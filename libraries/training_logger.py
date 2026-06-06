@@ -1,7 +1,12 @@
 import os
+import sys
 import csv
 import numpy as np
 import torch
+
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+
 from torch.utils.tensorboard import SummaryWriter
 from libraries.logger import get_logger
 

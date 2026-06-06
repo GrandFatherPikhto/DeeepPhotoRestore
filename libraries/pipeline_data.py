@@ -1,6 +1,10 @@
 import os
 import sys
 import numpy as np
+
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+
 import torch
 from torch.utils.data import Dataset
 import tifffile
@@ -30,7 +34,7 @@ class RestorationDataset(Dataset):
         # Геометрические аугментации (трансформации, не меняющие число каналов)
         # Для LQ (4 канала) и HQ (3 канала) нужно применять одинаковые трансформации
         # Пока отключим для простоты, включим позже
-        self.use_augment = False  # временно отключаем аугментации
+        self.use_augment = True  # временно отключаем аугментации
         if self.use_augment and self.is_train:
             self.geom_transform = A.Compose([
                 A.HorizontalFlip(p=0.5),

@@ -1,15 +1,20 @@
 #!/./.venv/bin/python
 # -*- coding: utf-8 -*-
 
+import sys
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+
 from libraries.logger import get_logger
 
 logger = get_logger()
 
 try:
-    from libraries.losses import FocalFrequencyLoss
+    from libraries.training_losses import FocalFrequencyLoss
     HAS_FFL = True
 except ModuleNotFoundError:
     logger.warning("FocalFrequencyLoss не найден! Используется только L1-Loss.")

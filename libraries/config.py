@@ -1,9 +1,19 @@
-import argparse
 import os
+import sys
+import argparse
 import yaml
+
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+
 from libraries.logger import get_logger
 
 logger = get_logger()
+
+# Настройки цветов для терминала
+RED = "\033[91m"
+RESET = "\033[0m"
+CROSS = f"{RED}✘{RESET}"
 
 def parse_args():
     """Парсинг аргументов командной строки."""
@@ -19,8 +29,8 @@ def parse_args():
 def load_yaml_config(config_path):
     """Чтение и валидация YAML-конфигурации."""
     if not os.path.exists(config_path):
-        logger.error(f"Конфигурационный файл не найден по пути: {config_path}")
-        raise FileNotFoundError(f"Missing config: {config_path}")
+        logger.error(f"{CROSS}\tКонфигурационный файл не найден: {config_path}")
+        sys.exit(1)  # Завершает работу с кодом ошибки
         
     with open(config_path, "r", encoding="utf-8") as f:
         try:
