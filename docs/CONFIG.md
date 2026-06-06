@@ -1,6 +1,6 @@
 # CONFIG.md – Полный справочник по конфигурационному YAML-файлу
 
-Конфигурационный файл (например, `options/train/RAW_NAFNet_NikonD600.yml`) используется **одновременно** скриптами `run_pipeline.py` (генерация датасета, визуальный контроль, smoke‑тест) и `run_training.py` (обучение). Ниже приведены все секции с пояснениями, какие параметры к какому скрипту относятся.
+Конфигурационный файл (например, `options/train/RAW_NAFNet_Test_20.yml`) используется **одновременно** скриптами `run_pipeline.py` (генерация датасета, визуальный контроль, smoke‑тест) и `run_training.py` (обучение). Ниже приведены все секции с пояснениями, какие параметры к какому скрипту относятся.
 
 > **Примечание:** Пути, содержащие `{name}`, автоматически заменяются на значение из поля `name`.
 
@@ -10,7 +10,7 @@
 
 | Параметр | Тип | Описание | Пример |
 |----------|-----|----------|--------|
-| `name` | строка | Имя эксперимента. Подставляется в пути, содержащие `{name}`. | `RAW-NAFNet-D600` |
+| `name` | строка | Имя эксперимента. Подставляется в пути, содержащие `{name}`. | `RAW-NAFNet-Test-20` |
 | `manual_seed` | целое | Фиксация генератора случайных чисел (воспроизводимость). | `42` |
 
 ---
@@ -19,9 +19,10 @@
 
 | Параметр | Скрипт | Описание | Пример |
 |----------|--------|----------|--------|
-| `source_images_dir` | pipeline | Папка с исходными резкими изображениями для генерации датасета. | `"/home/user/Images"` |
-| `dataset_root` | pipeline, training | Корень сгенерированного датасета (внутри создаются `train/`, `test/`). | `"datasets/nef_nafnet"` |
-| `resume_path` | training | Путь для сохранения / восстановления чекпоинта (поддерживает `{name}`). | `"experiments/{name}/checkpoints/resume.pth"` |
+| `source_images_dir` | pipeline | Папка с исходными резкими изображениями для генерации датасета. | `"/home/grand/Images/NEF_Test_20"` |
+| `dataset_root` | pipeline, training | Корень сгенерированного датасета (внутри создаются `train/`, `test/`). | `"datasets/nef_nafnet_20"` |
+| `resume_path` | training | Путь для сохранения / восстановления чекпоинта (поддерживает `{name}`). | `"experiments/{name}/checkpoints/resume_nef_nafnet_20.pth"` |
+| `pretrain_network_g` | training | (опционально) Путь к предобученным весам NAFNet (например, SIDD). | `"pretrained/NAFNet-SIDD-width32.pth"` |
 
 ---
 
@@ -31,11 +32,11 @@
 
 | Параметр | Тип | Описание | Пример |
 |----------|-----|----------|--------|
-| `downscale_factor` | целое | Во сколько раз уменьшить разрешение перед формированием LQ (обычно 1). | `4` |
+| `downscale_factor` | целое | Во сколько раз уменьшить разрешение перед формированием LQ. Для полного восстановления с `upscale_factor` в сети должно быть `upscale_factor = 2 * downscale_factor` (см. п. 12 ТЗ). | `4` |
 | `noise.add` | логическое | Добавлять ли шум. | `true` |
 | `noise.snr_db` | число | Отношение сигнал/шум в децибелах. | `20` |
 | `noise.correlated` | логическое | Использовать коррелированный шум (свёртка с PSF). | `true` |
-| `noise.psf_sigma` | число | Сигма гауссианы для PSF (размытие). | `1.5` |
+| `noise.psf_sigma` | число | Сигма гауссианы для PSF (размытие). | `0.5` |
 
 ---
 
@@ -43,14 +44,18 @@
 
 | Параметр | Описание | Пример |
 |----------|----------|--------|
+| `type` | Тип сети (всегда `NAFNet`). | `NAFNet` |
+| `arch_file` | Путь к файлу архитектуры (из субмодуля NAFNet). | `"modules/NAFNet/basicsr/models/archs/NAFNet_arch.py"` |
+| `class_name` | Имя класса в файле архитектуры. | `"NAFNet"` |
 | `num_in_ch` | Число входных каналов (для RGGB = 4). | `4` |
 | `num_out_ch` | Число выходных каналов (RGB = 3). | `3` |
 | `width` | Базовая ширина каналов (количество фильтров в первом слое). | `32` |
 | `enc_blk_nums` | Список: количество блоков NAFNet на этапах энкодера. | `[2, 2, 4, 8]` |
 | `middle_blk_num` | Количество блоков в латентном пространстве (bottleneck). | `12` |
 | `dec_blk_nums` | Список: количество блоков NAFNet на этапах декодера. | `[2, 2, 2, 2]` |
+| `upscale_factor` | Коэффициент увеличения разрешения (PixelShuffle). Должен быть согласован с `downscale_factor` и размерами патчей. | `2` (стандарт) или `8` (для `downscale_factor=4` по п. 12 ТЗ) |
 
-> Подробное описание архитектуры и её параметров см. в [TRAINING.md](TRAINING.md).
+> **Важно:** Соотношение размеров патчей в датасете: `gt_size = upscale_factor * lq_size`. Для `upscale_factor=2` классический случай, для `upscale_factor=8` – при `downscale_factor=4`.
 
 ---
 
@@ -62,10 +67,12 @@
 | `train.batch_size_per_gpu` | Размер батча на один GPU. | `16` |
 | `train.num_worker_per_gpu` | Количество процессов загрузки данных. | `4` |
 | `train.auto_resume` | Автоматически продолжать обучение из чекпоинта (если найден). | `true` |
-| `train.gt_size` | Размер выходного RGB‑патча (должен быть `2 * lq_size`). | `256` |
-| `train.lq_size` | Размер входного упакованного RGGB‑патча (должен быть `gt_size / 2`). | `128` |
+| `train.gt_size` | Размер выходного RGB‑патча. **Должен быть равен `upscale_factor * lq_size`**. | `256` (при `upscale_factor=2`) или `1024` (при `upscale_factor=8`) |
+| `train.lq_size` | Размер входного упакованного RGGB‑патча. | `128` |
 | `train.use_flip` | Включить случайные отражения (горизонтальные/вертикальные). | `true` |
 | `train.use_rot` | Включить случайные повороты на 90/180/270 градусов. | `true` |
+
+> **Примечание:** Параметр `save_checkpoint_epoch` в секции `datasets` устарел; используйте одноимённый в секции `train`.
 
 ---
 
@@ -73,12 +80,12 @@
 
 | Параметр | Описание | Пример |
 |----------|----------|--------|
-| `num_epochs` | Общее количество эпох. | `150` |
+| `num_epochs` | Общее количество эпох. | `200` |
 | `validation_freq` | Как часто (эпох) выполнять валидацию. | `1` |
 | `save_checkpoint_epoch` | Как часто (эпох) сохранять чекпоинт. | `5` |
 | `optim_g.lr` | Начальная скорость обучения. | `1e-3` |
-| `optim_g.weight_decay` | L2‑регуляризация (обычно 0). | `0` |
-| `optim_g.betas` | Параметры AdamW `(beta1, beta2)`. | `[0.9, 0.9]` |
+| `optim_g.weight_decay` | L2‑регуляризация (weight decay). | `1e-4` |
+| `optim_g.betas` | Параметры AdamW `(beta1, beta2)`. | `[0.9, 0.999]` |
 | `scheduler.eta_min` | Минимальная скорость обучения в конце (CosineAnnealingLR). | `1e-7` |
 
 ---
@@ -89,8 +96,10 @@
 |----------|----------|--------|
 | `type` | Тип лосса: `"combined"` (L1 + FFL) или `"l1"`. | `combined` |
 | `l1_weight` | Вес L1 компоненты. | `1.0` |
-| `ffl_weight` | Вес Focal Frequency Loss. | `1.0` |
+| `ffl_weight` | Вес Focal Frequency Loss. | `0.5` |
 | `ffl_alpha` | Параметр фокусировки в FFL (≥0). | `1.0` |
+| `ffl_log_factor` | Фактор логарифмического сжатия спектра (при `ffl_type="log"`). | `100.0` |
+| `ffl_type` | Тип FFL: `"linear"` (стандартный) или `"log"` (логарифмический, стабильнее). | `"log"` |
 
 ---
 
@@ -105,8 +114,8 @@
 | `log_csv` | Записывать ли в CSV. | `true` |
 | `file_log_freq` | Частота записи в текстовый лог (шаги). | `1` |
 | `log_loss_components` | Записывать отдельно L1 и FFL. | `true` |
-| `include_in_console` | Какие метрики выводить в консоль (словарь). | `loss: true` |
-| `include_in_file_log` | Какие метрики сохранять в текстовый файл (словарь). | `loss: true` |
+| `include_in_console` | Какие метрики выводить в консоль (словарь). | `loss: true, psnr: true, vram: true` |
+| `include_in_file_log` | Какие метрики сохранять в текстовый файл (словарь). | `loss: true, psnr: true, log_ssim: true` |
 
 ---
 
@@ -128,16 +137,17 @@
 
 ---
 
-## Пример полного конфигурационного файла
+## Пример полного конфигурационного файла (актуальный)
 
 ```yaml
-name: RAW-NAFNet-D600
+name: RAW-NAFNet-Test-20
 manual_seed: 42
 
 path:
-  source_images_dir: "/home/user/Images"
-  dataset_root: "datasets/nef_nafnet"
-  resume_path: "experiments/{name}/checkpoints/resume.pth"
+  source_images_dir: "/home/grand/Images/NEF_Test_20"
+  dataset_root: "datasets/nef_nafnet_20"
+  resume_path: "experiments/{name}/checkpoints/resume_nef_nafnet_20.pth"
+  # pretrain_network_g: "pretrained/NAFNet-SIDD-width32.pth"
 
 process_data:
   downscale_factor: 4
@@ -145,15 +155,19 @@ process_data:
     add: true
     snr_db: 20
     correlated: true
-    psf_sigma: 1.5
+    psf_sigma: 0.5
 
 network_g:
+  type: NAFNet
+  arch_file: "modules/NAFNet/basicsr/models/archs/NAFNet_arch.py"
+  class_name: "NAFNet"
   num_in_ch: 4
   num_out_ch: 3
   width: 32
   enc_blk_nums: [2, 2, 4, 8]
   middle_blk_num: 12
   dec_blk_nums: [2, 2, 2, 2]
+  upscale_factor: 2   # для downscale_factor=4 должно быть 8, но в данном конфиге 2 (пример)
 
 datasets:
   train:
@@ -163,25 +177,25 @@ datasets:
     auto_resume: true
     gt_size: 256
     lq_size: 128
-    use_flip: true
-    use_rot: true
 
 train:
-  num_epochs: 150
   validation_freq: 1
   save_checkpoint_epoch: 5
+  num_epochs: 200
   optim_g:
     lr: 1e-3
-    weight_decay: 0
-    betas: [0.9, 0.9]
+    weight_decay: 1e-4
+    betas: [0.9, 0.999]
   scheduler:
     eta_min: 1e-7
 
 losses:
   type: "combined"
   l1_weight: 1.0
-  ffl_weight: 1.0
+  ffl_weight: 0.5
   ffl_alpha: 1.0
+  ffl_log_factor: 100.0
+  ffl_type: "log"
 
 logger:
   print_freq: 2
@@ -219,10 +233,12 @@ pipeline_logger:
 
 ## Важные замечания
 
-- **Размеры патчей:** `gt_size` **обязан** быть равен `2 * lq_size`. Это требование модели (PixelShuffle увеличивает разрешение в 2 раза).
-- **Согласованность шума:** Параметры `process_data.noise` должны соответствовать тем, на которых вы обучали модель. При генерации датасета и последующем обучении используйте **один и тот же** YAML‑файл.
+- **Соотношение размеров патчей:** `gt_size` **обязан** быть равен `upscale_factor * lq_size`. Это требование модели (PixelShuffle увеличивает разрешение в `upscale_factor` раз).
+- **Согласованность деградации и апскейла:** Если `process_data.downscale_factor = 4`, то для полного восстановления исходного масштаба рекомендуется `network_g.upscale_factor = 8` (сжатие в 4 раза + упаковка Байера даёт суммарное уменьшение в 8 раз). В приведённом примере `upscale_factor = 2` – это классический случай демозаики без дополнительного сжатия.
 - **Воспроизводимость:** Фиксированный `manual_seed` гарантирует одинаковое разбиение train/test и аугментации.
+- **Предобученные веса:** Строка `pretrain_network_g` закомментирована – при необходимости раскомментируйте и укажите путь к `.pth` файлу (например, `NAFNet-SIDD-width32.pth`).
 
 ---
 
-> Полное описание архитектуры NAFNet и процесса обучения см. в [TRAINING.md](TRAINING.md).
+**Дата последнего обновления:** 2026-06-06  
+**Версия:** 2.0 (добавлен `upscale_factor`, исправлено соотношение размеров, актуализирован пример)
