@@ -12,7 +12,7 @@ import tifffile
 from PIL import Image
 from skimage.metrics import peak_signal_noise_ratio, structural_similarity
 from skimage.transform import resize
-from scipy.ndimage import zoom, conv2d
+from scipy.ndimage import zoom, convolve as conv2d
 
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -118,10 +118,14 @@ def run_baseline_evaluation(config):
     Загружает тестовые данные из dataset_root, применяет билинейную и MHC демозаику,
     логирует средние PSNR и SSIM.
     """
-    dataset_root = config.get('dataset_root', 'datasets/nef_nafnet')
-    test_lq_dir = os.path.join(dataset_root, 'test', 'lq_inputs')
-    test_gt_dir = os.path.join(dataset_root, 'test', 'hq_targets')
+    if 'path' in config and 'dataset_root' in config['path']:
+        dataset_root = config['path']['dataset_root']
+    else:
+        dataset_root = config.get('dataset_root', 'datasets/nef_nafnet')
     
+    test_lq_dir = os.path.join(dataset_root, 'test', 'lq_inputs')
+    test_gt_dir = os.path.join(dataset_root, 'test', 'hq_targets')    
+        
     if not os.path.exists(test_lq_dir) or not os.path.exists(test_gt_dir):
         logger.error(f"Тестовые папки не найдены: {test_lq_dir} или {test_gt_dir}")
         return
