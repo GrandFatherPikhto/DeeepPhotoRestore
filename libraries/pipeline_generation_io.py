@@ -73,7 +73,9 @@ def process_source_images(config):
             hq_dir = train_hq if subset == 'train' else test_hq
             lq_dir = train_lq if subset == 'train' else test_lq
             Image.fromarray(hq_target).save(os.path.join(hq_dir, f"{base}.png"))
-            tifffile.imwrite(os.path.join(lq_dir, f"{base}_bayer.tiff"), lq_packed, photometric='minisblack')
+            lq_16bit = np.clip(lq_packed * 65535.0, 0, 65535).astype(np.uint16)
+            tifffile.imwrite(os.path.join(lq_dir, f"{base}_bayer.tiff"), lq_16bit, photometric='minisblack')            
+            # tifffile.imwrite(os.path.join(lq_dir, f"{base}_bayer.tiff"), lq_packed, photometric='minisblack')
 
     process_file_list(train_files, 'train')
     process_file_list(test_files, 'test')

@@ -59,7 +59,8 @@ def generate_lq_from_hq(hq_rgb, config):
             bayer_float = add_uncorrelated_noise_float(bayer_float, snr_db)
 
     # 7. Преобразуем в 16-бит и упаковываем в 4 канала
-    bayer_16bit = np.clip(bayer_float * 65535.0, 0, 65535).astype(np.uint16)
-    lq_packed = extract_bayer_subchannels(bayer_16bit)   # (H_small, W_small, 4)
+    # bayer_16bit = np.clip(bayer_float * 65535.0, 0, 65535).astype(np.uint16)
+    # lq_packed = extract_bayer_subchannels(bayer_16bit)   # (H_small, W_small, 4)
+    lq_packed = extract_bayer_subchannels(bayer_float)   # (H_small/2, W_small/2, 4)
 
     return lq_packed, hq_target

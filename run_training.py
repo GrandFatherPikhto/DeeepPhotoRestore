@@ -64,11 +64,11 @@ def main():
 
                 current_lr = optimizer.param_groups[0]['lr']
                 train_logger.log_metrics(
-                    metrics['total_loss'].item() if isinstance(metrics['total_loss'], torch.Tensor) else metrics['total_loss'],
-                    metrics['psnr'].item(), current_lr, global_step,
-                    model=model, targets=hq, outputs=out, device=device,
-                    l1_loss_val=metrics['l1_val'], ffl_loss_val=metrics['ffl_val']
-                )
+                        metrics['total_loss'].item() if isinstance(metrics['total_loss'], torch.Tensor) else metrics['total_loss'],
+                        metrics['psnr'], current_lr, global_step,  # <-- УБРАЛИ .item()
+                        model=model, targets=hq, outputs=out, device=device,
+                        l1_loss_val=metrics['l1_val'], ffl_loss_val=metrics['ffl_val']
+                    )
                 global_step += 1
                 # внутри цикла, после вычисления metrics
                 log_progress(
@@ -79,7 +79,7 @@ def main():
                     batch_idx=batch_idx,
                     total_batches=len(train_loader),
                     loss_val=metrics['total_loss'].item(),
-                    psnr_val=metrics['psnr'].item(),
+                    psnr_val=metrics['psnr'],  # 🎯 ИСПРАВЛЕНО: передаем чистый float напрямую
                     device=device,
                     print_freq=opt.get('logger', {}).get('print_freq', 10),
                     vram=torch.cuda.memory_allocated(device)/(1024**3) if device.type == 'cuda' else None

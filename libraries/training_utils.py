@@ -93,13 +93,10 @@ def get_loss_criterion(opt, logger):
 def calculate_psnr(mse_loss):
     if mse_loss == 0:
         return float('inf')
-    return 20 * torch.log10(1.0 / torch.sqrt(mse_loss))
+    # 🎯 ИСПРАВЛЕНО: Добавляем .item() на самом раннем этапе. Теперь это обычный float!
+    return (20 * torch.log10(1.0 / torch.sqrt(mse_loss))).item()
 
 def compute_metrics(out, target, criterion, loss_type):
-    """
-    Вычисляет loss, компоненты L1/FFL и PSNR.
-    Возвращает словарь с ключами: total_loss, l1_val, ffl_val, psnr.
-    """
     if loss_type == 'combined':
         total_loss, l1_val, ffl_val = criterion(out, target)
     else:
@@ -108,13 +105,13 @@ def compute_metrics(out, target, criterion, loss_type):
         ffl_val = 0.0
 
     mse = nn.MSELoss()(out, target).detach()
-    # psnr = torch.tensor(calculate_psnr(mse))   # превращаем float в тензор
-    psnr = calculate_psnr(mse)
+    psnr = calculate_psnr(mse)  # Чистый float
+    
     return {
         'total_loss': total_loss,
         'l1_val': l1_val,
         'ffl_val': ffl_val,
-        'psnr': psnr
+        'psnr': psnr  # Безопасно для логгеров, без блокировок CUDA
     }
 
 def cleanup_experiment(opt, save_dir, logger):
