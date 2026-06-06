@@ -45,7 +45,6 @@ network_g:
   upscale_factor: 2   # явно указываем масштаб
 
 # === ПАРАМЕТРЫ ЦИКЛА ОБУЧЕНИЯ ===
-# === ПАРАМЕТРЫ ЦИКЛА ОБУЧЕНИЯ ===
 train:
   validation_freq: 1
   save_checkpoint_epoch: 5
