@@ -47,28 +47,34 @@ def clean_old_visuals(output_dir, filenames):
 
 def save_tensor_as_image(tensor, output_path):
     """
-    Конвертирует PyTorch тензор в изображение и сохраняет.
-    Поддерживает: 3-канальный RGB (C, H, W) и 4-канальный RGGB (C, H, W).
-    Для 4-канального применяет билинейную демозаику.
+    Конвертирует PyTorch тензор в изображение и сохраняет на диск.
+    Автоматически корректирует цветовое пространство RGB -> BGR для OpenCV.
     """
     img_np = tensor.detach().cpu().numpy()
     
     if img_np.ndim == 3:
         if img_np.shape[0] == 4:
-            # 4-канальный RGGB: применяем демозаику
-            img_np = img_np.transpose(1, 2, 0)   # (H, W, 4)
-            img_rgb = bilinear_demosaic_rggb(img_np)  # (2H, 2W, 3) float [0,1]
+            # На входе упакованный LQ Bayer: (4, H, W)
+            img_np = img_np.transpose(1, 2, 0)   # Перевод в (H, W, 4)
+            img_rgb = bilinear_demosaic_rggb(img_np)  # Быстрый демозаик -> (2H, 2W, 3) float [0,1]
             img_np = (img_rgb * 255.0).astype(np.uint8)
+            
+            # 🎯 ПРАВКА: Конвертируем RGB в BGR, чтобы cv2.imwrite не перевернул цвета
+            img_np = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
         else:
-            # 3-канальный RGB: просто переставляем оси
-            img_np = np.transpose(img_np, (1, 2, 0))
+            # На входе обычный HQ RGB тензор: (3, H, W)
+            img_np = np.transpose(img_np, (1, 2, 0)) # Перевод в (H, W, 3)
             img_np = np.clip(img_np * 255.0, 0, 255).astype(np.uint8)
+            
+            # 🎯 ПРАВКА: Конвертируем RGB в BGR для честного отображения эталона
+            img_np = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
     else:
-        # fallback: если вдруг 2D или другое
+        # На входе одноканальный (градиент или маска)
         img_np = np.clip(img_np * 255.0, 0, 255).astype(np.uint8)
-    
+        
     cv2.imwrite(output_path, img_np)
     logger.info(f"Диагностическое превью сохранено в: {output_path}")
+
 
 def run_visual_control(dataset, config):
     """Основная функция визуального верификационного контроля датасета."""

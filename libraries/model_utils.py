@@ -12,33 +12,44 @@ from libraries.logger import get_logger
 logger = get_logger()
 
 class NAFNetDemosaicSuperResolutionWrapper(nn.Module):
-    """
-    Академическая обёртка модели для честной демозаики.
-    Принимает 4-канальный subchannels-пакет (H/2, W/2, 4) и с помощью 
-    субпиксельного сдвига (PixelShuffle) перестраивает его в RGB (H, W, 3).
-    """
     def __init__(self, original_model, in_channels=4, out_channels=3, upscale_factor=2):
         super().__init__()
+        
         self.net = original_model
+        self.upscale_factor = upscale_factor
         
-        # Вычисляем промежуточные каналы для PixelShuffle: 3 * (2^2) = 12 каналов
+        # 1. Начальный блок: (B, 4, H, W) -> (B, 3, 2H, 2W)
         mid_channels = out_channels * (upscale_factor ** 2)
-        self.upsample_block = nn.Sequential(
-            nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1),
-            nn.PixelShuffle(upscale_factor)
-        )        
-        
-        # Финальный блок восстановления пространственной сетки
-        self.upsample_block = nn.Sequential(
+        self.pre_upsample = nn.Sequential(
             nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1),
             nn.PixelShuffle(upscale_factor)
         )
+        
+        # 🎯 ИСПРАВЛЕНИЕ: Пытаемся вытащить img_channels или img_channel, 
+        # а если библиотека их прячет — берём переданный in_channels (4) как безопасный фолбек
+        self.net_in_channels = getattr(original_model, 'img_channels', 
+                                       getattr(original_model, 'img_channel', in_channels))
+        
+        # 2. Адаптер каналов перед входом в NAFNet (переводим 3 канала RGB во входные каналы сети)
+        self.to_nafnet_ch = nn.Conv2d(out_channels, self.net_in_channels, kernel_size=3, padding=1)
+        
+        # 3. Финальный блок: возвращаем выученные признаки NAFNet обратно в честный RGB
+        self.post_process = nn.Conv2d(self.net_in_channels, out_channels, kernel_size=3, padding=1)
 
     def forward(self, x):
-        # Проход через базовые блоки NAFNet в латентном пространстве низкого разрешения
-        out = self.net(x)
-        # Честный апскейл разрешения в 2 раза с декомпозицией в RGB
-        return self.upsample_block(out)
+        # Шаг 1: Апскейл геометрии и сборка цвета из Bayer
+        x_scaled = self.pre_upsample(x)
+        
+        # Шаг 2: Подгонка под входные каналы NAFNet (4 канала)
+        x_naf = self.to_nafnet_ch(x_scaled)
+        
+        # Шаг 3: Прогон через ВСЮ глубину NAFNet в высоком разрешении
+        out_features = self.net(x_naf)
+        if isinstance(out_features, dict):
+            out_features = out_features['out']
+            
+        # Шаг 4: Финальная фильтрация в RGB
+        return self.post_process(out_features)
 
 def create_nafnet_model(config, device, pretrained_path=None):
     """

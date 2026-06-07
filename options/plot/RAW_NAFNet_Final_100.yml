@@ -1,10 +1,18 @@
-experiment_dir: "experiments/RAW-NAFNet-Test-100"
-output_dir: "experiments/RAW-NAFNet-Test-100/figures"
+name: RAW-NAFNet-Final-20        # Название эксперимента (имя папки в experiments)
+manual_seed: 42                  # Фиксация случайных чисел для воспроизводимости в диссертации
+
+path:
+  source_images_dir: "/home/grand/Images/NEF_Test_100"  # Путь к исходным кадрам-донорам
+  dataset_root: "datasets/nef_nafnet_20"               # Корневая папка сгенерированного датасета
+  resume_path: "experiments/{name}/checkpoints/resume_nef_nafnet_20.pth"
+
+experiment_dir: "experiments/RAW-NAFNet-Final-100"
+output_dir: "experiments/RAW-NAFNet-Final-100/figures"
 
 # Секция с путями к файлам данных
 data_files:
-  train_metrics: "experiments/RAW-NAFNet-Test-100/train_metrics.csv"
-  val_metrics: "experiments/RAW-NAFNet-Test-100/val_metrics.csv"
+  train_metrics: "experiments/RAW-NAFNet-Final-100/train_metrics.csv"
+  val_metrics: "experiments/RAW-NAFNet-Final-100/val_metrics.csv"
 
 baseline:
   psnr: 34.61

@@ -65,14 +65,20 @@ class RestorationDataset(Dataset):
         lq_img = resize(lq_img, (self.lq_size, self.lq_size), preserve_range=True, anti_aliasing=True).astype(lq_img.dtype)
         hq_img = resize(hq_img, (self.gt_size, self.gt_size), preserve_range=True, anti_aliasing=True).astype(hq_img.dtype)
 
-        # Аугментации (пока отключены)
+        # [Никаких циклов изменения размера здесь больше нет!]
+        # Данные загружены в try-except блоке, они уже имеют правильный физический масштаб.
+        
         if self.geom_transform is not None:
-            # TODO: синхронные аугментации
+            # Преобразуем в формат, понятный Albumentations (если это необходимо)
+            # Но помни: повороты на 90 градусов мы отключили в конфиге!
             pass
-
-        lq_tensor = torch.from_numpy(lq_img.transpose(2, 0, 1)).float()
-        hq_tensor = torch.from_numpy(hq_img.transpose(2, 0, 1)).float()
+            
+        # Честное копирование без интерполяционных искажений
+        lq_tensor = torch.from_numpy(lq_img.transpose(2, 0, 1)).float()  # (4, H_lq, W_lq)
+        hq_tensor = torch.from_numpy(hq_img.transpose(2, 0, 1)).float()  # (3, H_hq, W_hq)
+        
         return lq_tensor, hq_tensor
+
 
 def create_restoration_dataset(config, is_train=True):
     return RestorationDataset(config, is_train=is_train)

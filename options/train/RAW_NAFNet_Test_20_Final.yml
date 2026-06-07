@@ -1,0 +1,83 @@
+name: RAW-NAFNet-Final-20        # Название эксперимента (имя папки в experiments)
+manual_seed: 42                  # Фиксация случайных чисел для воспроизводимости в диссертации
+
+path:
+  source_images_dir: "/home/grand/Images/NEF_Test_20"  # Путь к исходным кадрам-донорам
+  dataset_root: "datasets/nef_nafnet_20"               # Корневая папка сгенерированного датасета
+  resume_path: "experiments/{name}/checkpoints/resume_nef_nafnet_20.pth"
+
+datasets:
+  train:
+    gt_size: 256                 # Размер эталонного патча HQ
+    lq_size: 128                 # Размер упакованного патча LQ (256 // upscale_factor)
+    upscale_factor: 2            # Коэффициент геометрического апскейла
+    batch_size_per_gpu: 8        # Подбери под объем своей VRAM
+    num_worker_per_gpu: 4
+    use_flip: true               # Безопасная аугментация (отражения)
+    auto_resume: true
+
+logger:
+  use_tb_logger: true            # Логирование графиков в TensorBoard
+  log_csv: true                  # Генерация train_metrics.csv для скрипта графиков
+  csv_file_name: "train_metrics.csv"
+  log_file_name: "train_progress.log"
+  file_log_freq: 20              # ⚡ Сохраняем расширенную аналитику раз в 20 батчей (чтобы не тормозить GPU)
+
+  # Оперативный вывод в консоль на каждом принт-шаге
+  include_in_console:
+    loss: true
+    psnr: true
+    vram: true
+    learning_rate: true
+
+  # Запись глубоких метрик в файл .log (фундамент для графиков диссертации)
+  include_in_file_log:
+    loss: true
+    psnr: true
+    learning_rate: true
+    delta_psnr: true             # Маркер выхода на плато
+    grad_variance: true          # Стабильность весов (дисперсия градиентов)
+    tv_ratio: true               # Коэффициент общей вариации (мыло/шум)
+    vram_usage: true
+    log_ssim: true
+
+visuals_logger:
+  output_dir: "experiments/{name}/debug_visuals"
+  lq_preview_name: "debug_lq_preview.png"
+  gt_reference_name: "debug_gt_reference.png"
+
+pipeline_logger:
+  log_file: "experiments/{name}/pipeline.log"
+
+network_g:
+  num_in_ch: 4                   # На входе RGGB subchannels
+  num_out_ch: 3                  # На выходе RGB
+  width: 32                      # Базовая ширина каналов NAFNet
+  upscale_factor: 2              # Передаем коэффициент масштаба в обертку модели
+  middle_blk_num: 12
+  enc_blk_nums: [2, 2, 4, 8]
+  dec_blk_nums: [2, 2, 2, 2]
+
+train:
+  validation_freq: 1             # Валидация каждую эпоху
+  save_checkpoint_epoch: 5       # Сохранение бэкапа каждые 5 эпох
+  num_epochs: 200                # Общая дистанция обучения
+  
+  optim_g:
+    type: AdamW                  # Указываем честно, как в коде
+    lr: !!float 1e-4             # Стартовая ювелирная скорость
+    weight_decay: !!float 1e-4           
+    betas: [0.9, 0.999]          
+  
+  scheduler:
+    type: MultiStepLR
+    milestones: [100, 150]       # 🎯 На 100 эпохе снижаем LR до 1e-5, на 150 до 1e-6 для тонкой сходимости
+    gamma: 0.1
+
+losses:
+  type: "combined"
+  l1_weight: 1.5                 # Баланс пространственной геометрии пикселей
+  ffl_weight: 0.2                # Баланс спектральных частот
+  ffl_alpha: 1.5                 # Коэффициент фокусировки на сложных частотах
+  ffl_log_factor: 100.0           
+  ffl_type: "log"                # Включаем оптимизированный логарифмический FFL

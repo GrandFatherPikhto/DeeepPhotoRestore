@@ -12,55 +12,69 @@ from libraries.degradation_ops import (
     apply_bayer_mask_float, extract_bayer_subchannels
 )
 
-# libraries/pipeline_generation_core.py
-
 def generate_lq_from_hq(hq_rgb, config):
     """
-    Генерирует пару (lq_packed, hq_target) для обучения.
-    lq_packed: 4-канальный RGGB (H_small, W_small, 4)  uint16
-    hq_target: резкое RGB (H_original, W_original, 3) uint8
+    Генерирует пару (lq_packed, hq_target) для обучения БЕЗ ДЕСТРУКТИВНОГО РЕЗАЙЗА.
+    lq_packed: 4-канальный RGGB (H_lq, W_lq, 4) float32, масштаб пикселей сохранён.
+    hq_target: резкое RGB (H_hq, W_hq, 3) uint8, выровненное по сетке.
     """
     proc_cfg = config.get('process_data', {})
-    downscale = proc_cfg.get('downscale_factor', 1)
+    data_cfg = config.get('datasets', {}).get('train', {})
+    
+    # Извлекаем целевые размеры кропов из конфига
+    gt_size = data_cfg.get('gt_size', 256)   # Размер HQ патча
+    lq_size = data_cfg.get('lq_size', 128)   # Размер LQ патча
+    upscale_factor = config.get('datasets', {}).get('train', {}).get('upscale_factor', 2)
+    
     noise_cfg = proc_cfg.get('noise', {})
     add_noise = noise_cfg.get('add', False)
     snr_db = noise_cfg.get('snr_db', 30)
     correlated = noise_cfg.get('correlated', False)
     psf_sigma = noise_cfg.get('psf_sigma', 1.5)
 
-    # 1. Резкий таргет – исходное полноразмерное RGB (без изменений)
-    hq_target = np.clip(hq_rgb, 0, 255).astype(np.uint8)   # (H, W, 3)
+    # 1. Честное вырезание центрального патча из исходного огромного кадра HQ
+    # Это гарантирует, что мы работаем с оригинальным масштабом матрицы сенсора
+    h_orig, w_orig = hq_rgb.shape[:2]
+    if h_orig < gt_size or w_orig < gt_size:
+        # Если исходная картинка внезапно меньше целевого патча, аккуратно расширяем её
+        hq_rgb = cv2.copyMakeBorder(hq_rgb, 0, max(0, gt_size - h_orig), 0, max(0, gt_size - w_orig), cv2.BORDER_REFLECT)
+        h_orig, w_orig = hq_rgb.shape[:2]
+        
+    top_hq = (h_orig - gt_size) // 2
+    left_hq = (w_orig - gt_size) // 2
+    
+    # Гарантируем чётность координат для сохранения фазы Bayer-сетки (RGGB)
+    top_hq = top_hq - (top_hq % 2)
+    left_hq = left_hq - (left_hq % 2)
+    
+    hq_target = hq_rgb[top_hq:top_hq+gt_size, left_hq:left_hq+gt_size, :].copy()
+    hq_target = np.clip(hq_target, 0, 255).astype(np.uint8)
 
-    # 2. Для генерации LQ уменьшаем разрешение (если нужен downscale)
-    if downscale > 1:
-        h, w = hq_rgb.shape[:2]
-        new_h, new_w = h // downscale, w // downscale
-        hq_small = cv2.resize(hq_rgb, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
-    else:
-        hq_small = hq_rgb.copy()
+    # 2. Переводим в float для физически корректных деградаций
+    hq_float = hq_target.astype(np.float32) / 255.0
 
-    # 3. Переводим hq_small в float [0,1] для операций деградации
-    hq_small_float = hq_small.astype(np.float32) / 255.0
-
-    # 4. Применяем размытие (PSF)
+    # 3. Моделируем размытие оптической системы (PSF Блур)
+    from libraries.degradation_ops import create_psf_kernel
     psf_kernel = create_psf_kernel(psf_sigma)
-    hq_blurred_float = np.zeros_like(hq_small_float)
+    hq_blurred = np.zeros_like(hq_float)
     for c in range(3):
-        hq_blurred_float[..., c] = cv2.filter2D(hq_small_float[..., c], -1, psf_kernel)
+        hq_blurred[..., c] = cv2.filter2D(hq_float[..., c], -1, psf_kernel)
 
-    # 5. Применяем маску Байера (получаем одноканальный Bayer float)
-    bayer_float = apply_bayer_mask_float(hq_blurred_float, pattern='RGGB')
+    # 4. Накладываем честную маску Bayer мозаики (каждый пиксель получает свой цвет)
+    from libraries.degradation_ops import apply_bayer_mask_float
+    bayer_float = apply_bayer_mask_float(hq_blurred, pattern='RGGB')
 
-    # 6. Добавляем шум (если нужно)
+    # 5. Добавляем шумы матрицы
+    from libraries.degradation_ops import add_correlated_noise_float, add_uncorrelated_noise_float
     if add_noise:
         if correlated:
             bayer_float = add_correlated_noise_float(bayer_float, snr_db, psf_kernel)
         else:
             bayer_float = add_uncorrelated_noise_float(bayer_float, snr_db)
 
-    # 7. Преобразуем в 16-бит и упаковываем в 4 канала
-    # bayer_16bit = np.clip(bayer_float * 65535.0, 0, 65535).astype(np.uint16)
-    # lq_packed = extract_bayer_subchannels(bayer_16bit)   # (H_small, W_small, 4)
-    lq_packed = extract_bayer_subchannels(bayer_float)   # (H_small/2, W_small/2, 4)
-
+    # 6. Упаковываем 2D-мозаику в 4 подканала RGGB. 
+    # Размерность падает ровно в 2 раза: была (gt_size, gt_size), стала (gt_size//2, gt_size//2, 4)
+    from libraries.degradation_ops import extract_bayer_subchannels
+    lq_packed = extract_bayer_subchannels(bayer_float) # Результат: (128, 128, 4) при gt_size=256
+    
     return lq_packed, hq_target

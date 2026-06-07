@@ -56,37 +56,27 @@ class CustomNEFPairDataset(Dataset):
         h_lq, w_lq = lq_packed.shape[:2]
         h_hq, w_hq = gt_rgb.shape[:2]
         
-        # Проверка соотношения масштабов (HQ должно быть в 2 раза больше LQ)
-        # if h_hq != 2 * h_lq or w_hq != 2 * w_lq:
-        #     # Если нет – делаем ресайз HQ к правильному размеру (аварийно)
-        #     from skimage.transform import resize
-        #     new_h, new_w = 2 * h_lq, 2 * w_lq
-        #     gt_rgb = resize(gt_rgb, (new_h, new_w), preserve_range=True)
-        #     h_hq, w_hq = new_h, new_w
-        target_h = self.upscale_factor * h_lq
-        target_w = self.upscale_factor * w_lq
-        if h_hq != target_h or w_hq != target_w:
-            from skimage.transform import resize
-            gt_rgb = resize(gt_rgb, (target_h, target_w), preserve_range=True)
-            h_hq, w_hq = target_h, target_w        
+        # Академическая проверка: размеры HQ должны строго соответствовать масштабу апскейла
+        assert h_hq == self.upscale_factor * h_lq and w_hq == self.upscale_factor * w_lq, \
+            f"Рассинхронизация размеров файлов для {name}: LQ={lq_packed.shape}, HQ={gt_rgb.shape}"
         
         # --- Академический случайный кроп (одинаковая геометрия для LQ и HQ) ---
-        # Кроп LQ размера lq_size x lq_size
         top_lq = random.randint(0, h_lq - self.lq_size) if h_lq > self.lq_size else 0
         left_lq = random.randint(0, w_lq - self.lq_size) if w_lq > self.lq_size else 0
         lq_cropped = lq_packed[top_lq:top_lq+self.lq_size, left_lq:left_lq+self.lq_size, :]
         
-        # Соответствующий кроп HQ (масштаб 2:1)
-        top_hq = top_lq * 2
-        left_hq = left_lq * 2
+        # Честная геометрическая привязка к масштабу апскейла
+        top_hq = top_lq * self.upscale_factor
+        left_hq = left_lq * self.upscale_factor
+        
+        # Вырезаем эталонный патч строго из соответствующего места сцены
         gt_cropped = gt_rgb[top_hq:top_hq+self.gt_size, left_hq:left_hq+self.gt_size, :]
         
-        # --- Применение аугментаций (синхронно для LQ и HQ) ---
-        # Преобразуем в тензоры PyTorch (C, H, W)
+        # Конвертируем в тензоры PyTorch (HWC -> CHW)
         lq_tensor = torch.from_numpy(lq_cropped.transpose(2, 0, 1)).float()   # (4, lq_size, lq_size)
         gt_tensor = torch.from_numpy(gt_cropped.transpose(2, 0, 1)).float()   # (3, gt_size, gt_size)
         
-        # 1. Случайное отражение по горизонтали и вертикали
+        # Безопасные для Bayer-матрицы аугментации (только отражения!)
         if self.use_flip:
             if random.random() > 0.5:
                 lq_tensor = TF.hflip(lq_tensor)
@@ -94,12 +84,5 @@ class CustomNEFPairDataset(Dataset):
             if random.random() > 0.5:
                 lq_tensor = TF.vflip(lq_tensor)
                 gt_tensor = TF.vflip(gt_tensor)
-        
-        # 2. Случайный поворот на 90, 180 или 270 градусов
-        if self.use_rot:
-            k = random.randint(0, 3)   # 0 – без поворота, 1 – 90°, 2 – 180°, 3 – 270°
-            if k > 0:
-                lq_tensor = TF.rotate(lq_tensor, k * 90)
-                gt_tensor = TF.rotate(gt_tensor, k * 90)
-        
+                
         return lq_tensor, gt_tensor

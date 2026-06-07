@@ -21,9 +21,9 @@ def main():
     train_loader = create_train_loader(opt)
     pretrained_path = opt.get('path', {}).get('pretrain_network_g', None)
     model = create_nafnet_model(opt, device, pretrained_path=pretrained_path)
-    for name, param in model.net.named_parameters():
-        if 'intro' not in name and 'ending' not in name:
-            param.requires_grad = False
+    # for name, param in model.net.named_parameters():
+    #     if 'intro' not in name and 'ending' not in name:
+    #         param.requires_grad = False
 
     total_steps = len(train_loader) * opt['train']['num_epochs']       
     optimizer, scheduler = create_optimizer_and_scheduler(model, opt, total_training_steps=total_steps)

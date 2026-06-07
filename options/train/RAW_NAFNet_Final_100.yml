@@ -1,0 +1,89 @@
+name: RAW-NAFNet-Final-100       # Название эксперимента и папки в experiments/
+manual_seed: 42                  # Фиксация случайных чисел по заветам Евстигнеева
+
+path:
+  source_images_dir: "/home/grand/Images/NEF_Test_100"  # 100 можайских кадров-доноров
+  dataset_root: "datasets/nef_nafnet_100"              # Корневая папка большого датасета
+  resume_path: "experiments/{name}/checkpoints/resume_nef_nafnet_100.pth"
+
+# Секция путей для скрипта генерации графиков plot_metrics.py
+experiment_dir: "experiments/RAW-NAFNet-Final-100"
+output_dir: "experiments/RAW-NAFNet-Final-100/figures"
+
+data_files:
+  train_metrics: "experiments/RAW-NAFNet-Final-100/train_metrics.csv"
+  val_metrics: "experiments/RAW-NAFNet-Final-100/val_metrics.csv"
+
+datasets:
+  train:
+    gt_size: 512                 # 🎯 РАЗДУЛИ КРОП для идеальной плавности боке и размытия
+    lq_size: 256                 # Соответственно (512 // upscale_factor)
+    upscale_factor: 2            # Коэффициент геометрического апскейла
+    batch_size_per_gpu: 2        # Ювелирный размер батча для 512-патчей на 12ГБ VRAM
+    num_worker_per_gpu: 2
+    use_flip: true               # Наша безопасная для Bayer-матрицы аугментация
+    auto_resume: true
+
+logger:
+  use_tb_logger: true            
+  log_csv: true                  
+  csv_file_name: "train_metrics.csv"
+  log_file_name: "train_progress.log"
+  file_log_freq: 50              # Снимаем метрики раз в 50 батчей (чтобы 4070 Ti летела без пауз)
+
+  include_in_console:
+    loss: true
+    psnr: true
+    vram: true
+    learning_rate: true
+
+  include_in_file_log:
+    loss: true
+    psnr: true
+    learning_rate: true
+    delta_psnr: true             # Маркер выхода на плато dPSNR
+    grad_variance: true          # Стабильность весов
+    tv_ratio: true               # Контроль мыла и муара (TV Ratio)
+    vram_usage: true
+    log_ssim: true               
+
+visuals_logger:
+  output_dir: "experiments/{name}/debug_visuals"
+  lq_preview_name: "debug_lq_preview.png"
+  gt_reference_name: "debug_gt_reference.png"
+
+pipeline_logger:
+  log_file: "experiments/{name}/pipeline.log"
+
+network_g:
+  num_in_ch: 4                   # На входе RAW (RGGB subchannels)
+  num_out_ch: 3                  # На выходе честный RGB
+  width: 64                      # 🎯 УДВОИЛИ ШИРИНУ КАНАЛОВ для сочности фиолетовых люпинов!
+  upscale_factor: 2              
+  middle_blk_num: 12
+  enc_blk_nums: [2, 2, 4, 8]     # Полная, глубокая академическая структура NAFNet
+  dec_blk_nums: [2, 2, 2, 2]
+
+train:
+  validation_freq: 1             # Валидация и Center Crop каждую эпоху
+  save_checkpoint_epoch: 10      # Бэкап чекпоинта каждые 10 эпох
+  num_epochs: 300                # 🎯 Наша новая дистанция на 300 эпох
+  
+  optim_g:
+    type: AdamW                  
+    lr: !!float 1e-4             
+    weight_decay: !!float 1e-4           
+    betas: [0.9, 0.999]          
+  
+  scheduler:
+    type: MultiStepLR
+    milestones: [150, 225]       # 🎯 Ступеньки шедулера: на 150-й и 225-й эпохах для тончайшего дожима весов
+    gamma: 0.1
+
+losses:
+  type: "combined"
+  l1_weight: 1.5                 
+  ffl_weight: 0.2                
+  ffl_alpha: 1.5                 
+  ffl_log_factor: 100.0           
+  ffl_type: "log"                # Наш оптимизированный логарифмический FFL

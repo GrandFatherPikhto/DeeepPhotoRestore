@@ -44,35 +44,41 @@ class FocalFrequencyLoss(nn.Module):
         return frequency_loss.mean() * self.loss_weight
 
 class FocalFrequencyLossLog(nn.Module):
-    """
-    Focal Frequency Loss с логарифмическим сжатием амплитуд по ГОСТ и ТЗ.
-    Уравновешивает вклады низких и высоких частот для стабилизации цвета.
-    """
     def __init__(self, loss_weight=1.0, alpha=1.0, log_factor=100.0):
         super().__init__()
         self.loss_weight = loss_weight
         self.alpha = alpha
-        self.gamma = log_factor  # 🎯 Задаем числовой фактор сжатия спектра
+        self.gamma = log_factor  # Фактор сжатия спектра
+        
+        # 🎯 Вычисляем константу ОДИН РАЗ при инициализации и регистрируем как буфер
+        # Больше никаких блокирующих аллокаций памяти внутри forward!
+        denominator = torch.log(torch.tensor(1.0 + self.gamma))
+        self.register_buffer('log_denominator', denominator)
 
     def forward(self, pred, target):
+        # Перевод в частотную область через двумерное быстрое преобразование Фурье
         pred_fft = torch.fft.fft2(pred, dim=(-2, -1))
         target_fft = torch.fft.fft2(target, dim=(-2, -1))
+        
+        # Сдвиг низкочастотных компонент в центр спектра
         pred_fft = torch.fft.fftshift(pred_fft, dim=(-2, -1))
         target_fft = torch.fft.fftshift(target_fft, dim=(-2, -1))
-
+        
+        # Извлекаем амплитудный спектр
         pred_amp = torch.abs(pred_fft)
         target_amp = torch.abs(target_fft)
-
-        # 🎯 ИСПРАВЛЕНО: Честный перевод спектра в децибелы с нормированием динамического диапазона
-        pred_amp_log = torch.log(1.0 + self.gamma * pred_amp) / torch.log(torch.tensor(1.0 + self.gamma, device=pred.device))
-        target_amp_log = torch.log(1.0 + self.gamma * target_amp) / torch.log(torch.tensor(1.0 + self.gamma, device=pred.device))
-
+        
+        # ⚡ Логарифмическое сжатие динамического диапазона частот с использованием готового буфера
+        pred_amp_log = torch.log(1.0 + self.gamma * pred_amp) / self.log_denominator
+        target_amp_log = torch.log(1.0 + self.gamma * target_amp) / self.log_denominator
+        
+        # Вычисление взвешенного частотного расстояния (Focal Loss в спектральной области)
         amp_distance = (pred_amp_log - target_amp_log) ** 2
-
         max_dist = torch.max(amp_distance).detach() + 1e-8
+        
         focal_weight = (amp_distance / max_dist) ** self.alpha
-
         frequency_loss = focal_weight * amp_distance
+        
         return frequency_loss.mean() * self.loss_weight
 
 class CombinedLoss(nn.Module):
