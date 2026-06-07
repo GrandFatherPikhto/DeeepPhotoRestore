@@ -91,9 +91,6 @@ def main():
             scheduler.step()
 
             val_freq = train_cfg.get('validation_freq', 1)   # по умолчанию 1
-            # if (epoch + 1) % val_freq == 0:
-            #     mean_ssim, mean_psnr = validator.run_validation(model, epoch, device)
-            #     train_logger.log_validation_metrics(epoch, mean_ssim)
 
             # === [ПЛАНОВАЯ ВАЛИДАЦИЯ КОНВЕЙЕРА В КОНЦЕ ЭПОХИ] ===
             if (epoch + 1) % val_freq == 0:

@@ -12,8 +12,10 @@ import torchvision.transforms.functional as TF
 from libraries.pipeline_generation_core import generate_lq_from_hq
 
 def degrade_frame(frame_rgb, config, target_size):
-    hq = frame_rgb.astype(np.float32) / 255.0
-    lq_packed, _ = generate_lq_from_hq(frame_rgb, config) # config содержит process_data
+    hq = frame_rgb        
+    # hq = frame_rgb.astype(np.float32) / 255.0
+    # lq_packed, _ = generate_lq_from_hq(frame_rgb, config) # config содержит process_data
+    lq_packed, _ = generate_lq_from_hq(hq, config)  # внутри всё нормируется как надо
     h, w = lq_packed.shape[:2]
     if h != target_size or w != target_size:
         lq_packed = TF.resize(
