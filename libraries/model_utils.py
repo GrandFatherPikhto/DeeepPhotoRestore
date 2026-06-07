@@ -12,38 +12,37 @@ from libraries.logger import get_logger
 logger = get_logger()
 
 class NAFNetDemosaicSuperResolutionWrapper(nn.Module):
-    def __init__(self, original_model, in_channels=4, out_channels=3, upscale_factor=2):
+    def __init__(self, original_model, in_channels=4, out_channels=3, upscale_factor=4):
         super().__init__()
         
         self.net = original_model
-        self.upscale_factor = upscale_factor
+        self.upscale_factor = upscale_factor # Теперь равен 4
         
-        # 1. Начальный блок: (B, 4, H, W) -> (B, 3, 2H, 2W)
-        mid_channels = out_channels * (upscale_factor ** 2)
+        # 1. Начальный блок: переводим 4 канала Bayer низкого разрешения (128x128)
+        # сразу в пространство высокого разрешения (512x512x3) через PixelShuffle(4)
+        mid_channels = out_channels * (upscale_factor ** 2) # 3 * (4**2) = 48 каналов
         self.pre_upsample = nn.Sequential(
             nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1),
-            nn.PixelShuffle(upscale_factor)
+            nn.PixelShuffle(upscale_factor) # (B, 4, 128, 128) -> (B, 3, 512, 512)
         )
         
-        # 🎯 ИСПРАВЛЕНИЕ: Пытаемся вытащить img_channels или img_channel, 
-        # а если библиотека их прячет — берём переданный in_channels (4) как безопасный фолбек
         self.net_in_channels = getattr(original_model, 'img_channels', 
                                        getattr(original_model, 'img_channel', in_channels))
         
-        # 2. Адаптер каналов перед входом в NAFNet (переводим 3 канала RGB во входные каналы сети)
+        # 2. Адаптер каналов перед входом в NAFNet
         self.to_nafnet_ch = nn.Conv2d(out_channels, self.net_in_channels, kernel_size=3, padding=1)
         
-        # 3. Финальный блок: возвращаем выученные признаки NAFNet обратно в честный RGB
+        # 3. Финальный блок: возвращаем признаки NAFNet обратно в честный RGB
         self.post_process = nn.Conv2d(self.net_in_channels, out_channels, kernel_size=3, padding=1)
 
     def forward(self, x):
-        # Шаг 1: Апскейл геометрии и сборка цвета из Bayer
-        x_scaled = self.pre_upsample(x)
+        # Шаг 1: Честный 4-кратный апскейл геометрии и сборка цвета из Bayer
+        x_scaled = self.pre_upsample(x) # На выходе: (B, 3, 512, 512)
         
         # Шаг 2: Подгонка под входные каналы NAFNet (4 канала)
         x_naf = self.to_nafnet_ch(x_scaled)
         
-        # Шаг 3: Прогон через ВСЮ глубину NAFNet в высоком разрешении
+        # Шаг 3: Прогон через ВСЮ глубину NAFNet в полном высоком разрешении 512x512
         out_features = self.net(x_naf)
         if isinstance(out_features, dict):
             out_features = out_features['out']

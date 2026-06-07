@@ -25,19 +25,22 @@ class CustomNEFPairDataset(Dataset):
             if f.endswith('.tiff')
         ]
         
-        # Читаем параметры из конфига
-        train_cfg = opt.get('datasets', {}).get('train', {}) if opt else {}
-        # self.upscale_factor = opt.get('datasets', {}).get('train', {}).get('upscale_factor', 2)
-        self.upscale_factor = opt.get('datasets', {}).get('train', {}).get('upscale_factor', 2)
-        self.gt_size = train_cfg.get('gt_size', 256)   # размер HQ (должен быть 2 * lq_size)
+        # Задаём единственный источник истины для масштабирования (Модель -> Датасет)
+        if opt is None:
+            opt = {}
+        self.upscale_factor = opt.get('network_g', {}).get('upscale_factor', 2)
+        
+        train_cfg = opt.get('datasets', {}).get('train', {})
+        self.gt_size = train_cfg.get('gt_size', 256)   # размер HQ (должен быть upscale_factor * lq_size)
         self.lq_size = train_cfg.get('lq_size', 128)
         self.use_flip = train_cfg.get('use_flip', False)
         self.use_rot = train_cfg.get('use_rot', False)
-        
-        # Проверка соотношения размеров
-        assert self.gt_size == self.upscale_factor * self.lq_size, \
-            f"gt_size ({self.gt_size}) must be {self.upscale_factor} * lq_size ({self.lq_size})"
 
+        # Жёсткая верификация геометрической целостности на базе единого источника истины
+        assert self.gt_size == self.upscale_factor * self.lq_size, \
+            f"Критическая ошибка геометрии ВАК: gt_size ({self.gt_size}) должен быть строго равен " \
+            f"upscale_factor ({self.upscale_factor}) * lq_size ({self.lq_size})!"        
+        
     def __len__(self):
         return len(self.filenames)
 

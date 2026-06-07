@@ -69,4 +69,20 @@ def get_pipeline_config():
     if 'resume_path' in resume_cfg:
         resume_cfg['resume_path'] = resume_cfg['resume_path'].replace('{name}', exp_name)
 
+    # === [РЕФОРМА КОНФИГУРАЦИИ: ВАРИАНТ А] ===
+    # 1. Проверка на наличие устаревшего параметра (Deprecation Check)
+    train_cfg = config.get('datasets', {}).get('train', {})
+    if 'upscale_factor' in train_cfg:
+        logger.warning(
+            f"\n⚠️  [DEPRECATION WARNING]: Обнаружен устаревший параметр "
+            f"'datasets.train.upscale_factor' в файле {args.opt}.\n"
+            f"Данная строка полностью ПРОИГНОРИРОВАНА. Единственным легитимным "
+            f"источником истины масштаба теперь является 'network_g.upscale_factor'.\n"
+        )
+        
+    # 2. Жёсткий замок архитектурной целостности (Критерий приёмки №4)
+    if 'network_g' not in config or 'upscale_factor' not in config['network_g']:
+        logger.critical("💥 КРИТИЧЕСКАЯ ОШИБКА: Конфигурационный файл не содержит обязательный параметр 'network_g.upscale_factor'!")
+        raise ValueError("Архитектурная целостность нарушена: 'network_g.upscale_factor' является обязательным полем ТЗ.")
+        
     return config
