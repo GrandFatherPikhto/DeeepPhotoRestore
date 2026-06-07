@@ -70,7 +70,7 @@ def ensure_dataset_ready(config, opt_path, clean_dataset=False):
         files_count = len(os.listdir(lq_dir))
         logger.info(f"Датасет уже существует ({files_count} патчей). Генерация пропущена.")
 
-def create_restoration_dataset(config, is_train=True):
-    """Создаёт и возвращает экземпляр RestorationDataset."""
-    from libraries.old.pipeline_data import RestorationDataset
-    return RestorationDataset(config, is_train=is_train)
+# def create_restoration_dataset(config, is_train=True):
+#     """Создаёт и возвращает экземпляр RestorationDataset."""
+#     from libraries.old.pipeline_data import RestorationDataset
+#     return RestorationDataset(config, is_train=is_train)
