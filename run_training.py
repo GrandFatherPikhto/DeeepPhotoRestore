@@ -57,8 +57,9 @@ def main():
                 if isinstance(out, dict):
                     out = out['out']
 
-                metrics = compute_metrics(out, hq, criterion, loss_type)
+                metrics = compute_metrics(out, hq, criterion, loss_type, current_epoch=epoch)
 
+                # Градиенты
                 metrics['total_loss'].backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)  # ← добавить
                 optimizer.step()
@@ -90,9 +91,21 @@ def main():
             scheduler.step()
 
             val_freq = train_cfg.get('validation_freq', 1)   # по умолчанию 1
+            # if (epoch + 1) % val_freq == 0:
+            #     mean_ssim, mean_psnr = validator.run_validation(model, epoch, device)
+            #     train_logger.log_validation_metrics(epoch, mean_ssim)
+
+            # === [ПЛАНОВАЯ ВАЛИДАЦИЯ КОНВЕЙЕРА В КОНЦЕ ЭПОХИ] ===
             if (epoch + 1) % val_freq == 0:
-                mean_ssim = validator.run_validation(model, epoch, device)
-                train_logger.log_validation_metrics(epoch, mean_ssim)
+                logger.info(f"🎬 Запуск процесса валидации для эпохи {epoch}...")
+                
+                # 1. Честная распаковка пары метрик (SSIM, PSNR) из нашего модернизированного валидатора
+                epoch_ssim, epoch_psnr = validator.run_validation(model, epoch, device)
+                
+                # 2. Отправка сопряжённых метрик в твой центральный логгер
+                # Метод внутри себя запишет данные в val_metrics.csv и отправит в TensorBoard!
+                train_logger.log_validation_metrics(epoch, epoch_ssim, epoch_psnr)
+ 
 
             if (epoch + 1) % save_every == 0:
                 # При плановом сохранении

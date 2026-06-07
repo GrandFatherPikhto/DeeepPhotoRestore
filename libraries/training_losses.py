@@ -87,12 +87,13 @@ class CombinedLoss(nn.Module):
         losses_cfg = config.get('losses', {})
         self.l1_weight = losses_cfg.get('l1_weight', 1.0)
         self.ffl_weight = losses_cfg.get('ffl_weight', 1.0)
+        
+        # 🎯 Извлекаем эпоху старта спектрального лосса (дефолт — 0, т.е. сразу)
+        self.ffl_start_epoch = losses_cfg.get('ffl_start_epoch', 0)
         self.ffl_type = losses_cfg.get('ffl_type', 'linear')
         self.l1_loss = nn.L1Loss()
-
+        
         log_factor = losses_cfg.get('ffl_log_factor', 100.0)
-
-        # 🎯 ИСПРАВЛЕНО: Прокидываем ffl_log_factor в логарифмический лосс
         if self.ffl_type == 'log':
             self.ffl_loss = FocalFrequencyLossLog(
                 loss_weight=1.0,
@@ -105,8 +106,21 @@ class CombinedLoss(nn.Module):
                 alpha=losses_cfg.get('ffl_alpha', 1.0)
             )
 
-    def forward(self, pred, target):
+    def forward(self, pred, target, current_epoch=0):
+        """
+        current_epoch: Текущая эпоха обучения, передаваемая из основного цикла.
+        """
         l1 = self.l1_loss(pred, target)
-        ffl = self.ffl_loss(pred, target)
-        total = self.l1_weight * l1 + self.ffl_weight * ffl
+        
+        # 🎯 Автоматический динамический прогрев: проверяем веху эпохи
+        if current_epoch >= self.ffl_start_epoch:
+            ffl = self.ffl_loss(pred, target)
+            active_ffl_weight = self.ffl_weight
+        else:
+            # Период прогрева: спектральный лосс исключён из графа вычислений
+            ffl = torch.tensor(0.0, device=pred.device)
+            active_ffl_weight = 0.0
+            
+        total = self.l1_weight * l1 + active_ffl_weight * ffl
         return total, l1.item(), ffl.item()
+

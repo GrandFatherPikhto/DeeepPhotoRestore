@@ -145,18 +145,27 @@ class TrainingLogger:
             self.tb_logger.close()
             logger.info("Потоки TensorBoard закрыты.")
 
-    def log_validation_metrics(self, epoch, ssim, psnr_val=None):
+    def log_validation_metrics(self, epoch, ssim, psnr_val):
+        """
+        Синхронно записывает средние валидационные метрики эпохи в val_metrics.csv
+        в строгом соответствии с требованиями plot_metrics.py и отправляет их в TensorBoard.
+        """
         val_csv_path = os.path.join(self.save_dir, 'val_metrics.csv')
         file_exists = os.path.exists(val_csv_path)
-        with open(val_csv_path, 'a', newline='') as f:
+        
+        # 1. Пишем в TensorBoard (проверяем наличие твоего SummaryWriter)
+        if hasattr(self, 'tb_writer') and self.tb_writer:
+            self.tb_writer.add_scalar('val/mean_psnr', psnr_val, epoch)
+            self.tb_writer.add_scalar('val/mean_ssim', ssim, epoch)
+            
+        # 2. Пишем в CSV-файл с правильной геометрией колонок под скрипт графиков
+        with open(val_csv_path, 'a', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             if not file_exists:
-                if psnr_val is not None:
-                    writer.writerow(['epoch', 'ssim', 'psnr'])
-                else:
-                    writer.writerow(['epoch', 'ssim'])
-            if psnr_val is not None:
-                writer.writerow([epoch, ssim, psnr_val])
-            else:
-                writer.writerow([epoch, ssim])
+                # 🎯 ПРАВКА 1: Порядок колонок строго под требования plot_metrics.py!
+                writer.writerow(['epoch', 'psnr', 'ssim'])
+                
+            # 🎯 ПРАВКА 2: Значения ложатся строго на свои координатные оси
+            writer.writerow([epoch, round(psnr_val, 4), round(ssim, 4)])
+            
         logger.info(f"Валидационные метрики сохранены в {val_csv_path}")

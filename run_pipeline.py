@@ -36,6 +36,8 @@ def main():
 
         # 2. Создание правильного датасета для визуального контроля и smoke-теста
         dataset_root = config['path']['dataset_root']
+        
+        # 🎯 ИСПРАВЛЕНИЕ: Приводим имена папок в строгое соответствие со скриптом генерации
         train_lq_dir = os.path.join(dataset_root, 'train', 'lq_inputs')
         train_hq_dir = os.path.join(dataset_root, 'train', 'hq_targets')
         
@@ -43,6 +45,7 @@ def main():
         if not os.path.exists(train_lq_dir) or not os.path.exists(train_hq_dir):
             logger.error(f"Папки датасета не найдены: {train_lq_dir} или {train_hq_dir}")
             sys.exit(1)
+
         
         # Создаём экземпляр CustomNEFPairDataset (без аугментаций для визуализации)
         # Временно отключаем аугментации, чтобы получить детерминированный превью

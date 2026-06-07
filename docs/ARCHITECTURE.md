@@ -1,66 +1,13 @@
 # ARCHITECTURE.md – Архитектура программного комплекса DeepPhotoRestore
 
+**Версия:** 2.0 (актуальная, 2026-06-07)  
+**Статус:** Полное соответствие коду после рефакторинга.
+
 В данном документе описывается структура кода, потоки данных и взаимодействие модулей. Он предназначен для быстрого понимания того, какой файл за что отвечает, как тензоры преобразуются от RAW‑входа до RGB‑выхода и как устроен цикл обучения.
 
-> **Навигация:** Для псевдокода алгоритмов см. [ALGORITHM.md](ALGORITHM.md). Для конфигурации – [CONFIG.md](CONFIG.md). Для запуска обучения – [TRAINING.md](TRAINING.md).
-
-
-# Введение: адаптация архитектуры NAFNet к задаче совместной демозаики и супер-разрешения
-
-Архитектура NAFNet (Nonlinear Activation Free Network) [1] продемонстрировала высокую эффективность в задачах шумоподавления (датасет SIDD) и деблюринга (датасеты GoPro, REDS). Однако оригинальная реализация NAFNet, предоставленная авторами, рассчитана на обработку **трёхканальных RGB-изображений** как на входе, так и на выходе, а также предполагает сохранение пространственного разрешения (архитектура типа U-Net без апскейлинга).
-
-В данной работе решается задача **совмещённой демозаики и супер-разрешения (Joint Demosaicing and Super‑Resolution, JDSR)**: преобразование четырёхканального упакованного RGGB-массива (результат субдискретизации цветного сенсора) в полноцветное RGB-изображение с увеличением линейного разрешения в коэффициент `upscale_factor` (который может составлять 2, 4 или 8 в зависимости от степени сжатия оптической системы). Применение NAFNet «как есть» в такой постановке наталкивается на следующие принципиальные ограничения.
-
-## 1. Несовпадение размерности входного тензора
-
-Оригинальная модель ожидает тензор формы `(B, 3, H, W)`. Входной же сигнал после физической дискретизации представляет собой упакованный массив Байера формы `(B, 4, H, W)` (каналы R, G₁, G₂, B). Прямая подстановка 4‑канального тензора в слой `conv_first`, сконфигурированный на 3 входных канала, приводит к ошибке несоответствия размерностей. Усреднение или иное сжатие четвёртого канала недопустимо, так как это разрушает пространственную структуру мозаики и ведёт к необратимым спектральным искажениям (в частности, к фиолетовому муару и ложным цветам). Следовательно, необходимо модифицировать первый свёрточный слой сети, увеличив число его входных каналов до 4.
-
-## 2. Отсутствие в архитектуре механизма масштабирования разрешения
-
-Базовый NAFNet сохраняет пространственную размерность от входа к выходу. В задаче JDSR требуется не только демозаика (восстановление трёх цветовых компонент), но и кратное увеличение разрешения. Без встраивания дополнительного модуля апскейлинга сеть не может выдать RGB-изображение большего размера, чем входной LQ. Для этого введена обёртка `NAFNetDemosaicSuperResolutionWrapper`, которая добавляет после базового NAFNet свёрточный слой с последующим `PixelShuffle` (d) [2]. Коэффициент d = `upscale_factor` задаётся динамически в конфигурационном файле, что позволяет адаптировать модель к различным значениям `downscale_factor` на этапе генерации датасета.
-
-## 3. Невозможность прямого переноса предобученных весов (SIDD)
-
-Для ускорения сходимости на ограниченном диссертационном датасете (порядка сотен изображений) целесообразно использовать предобученную на SIDD модель NAFNet‑width32. Однако из‑за несовпадения числа входных каналов (3 у предобученной модели против 4 у нашей) стандартная загрузка чекпоинта через `model.load_state_dict()` завершается ошибкой `RuntimeError: shape mismatch` для ключей `intro` и `ending`. Простое отбрасывание этих слоёв недопустимо, так как веса внутренних блоков (`encoder`, `middle`, `decoder`) имеют корректные размерности и могут быть перенесены. Реализован механизм **частичного переноса весов**: загружаются только те слои, у которых форма тензоров совпадает; загрузка выполняется с параметром `strict=False`. Первый и последний слои инициализируются заново с учётом канальности нашей задачи.
-
-## 4. Несоответствие геометрических соотношений между LQ и HQ
-
-Физический конвейер деградации включает два последовательных этапа:
-- оптическое уменьшение разрешения сцены (коэффициент `downscale_factor` в секции `process_data`);
-- субдискретизация при упаковке Байера, уменьшающая размеры ещё в 2 раза (из одноканального массива `(H, W)` формируется 4‑канальный тензор размера `(H/2, W/2, 4)`).
-
-Таким образом, итоговый LQ оказывается меньше исходного HQ в `2 × downscale_factor` раз. Для корректного применения `PixelShuffle(upscale_factor)` необходимо, чтобы `gt_size = upscale_factor * lq_size`. В то же время, восстановление исходного масштаба требует `upscale_factor = 2 × downscale_factor`. В оригинальной реализации NAFNet эти соотношения не заданы. Пришлось внедрить динамические параметры `upscale_factor` в обёртку модели и в класс датасета `CustomNEFPairDataset`, а также добавить предикат `assert gt_size == upscale_factor * lq_size` для раннего обнаружения ошибок конфигурации.
-
-## 5. Ограничения на аугментации, связанные с топологией Байера
-
-Стандартные геометрические аугментации (повороты на произвольный угол, отражения по диагонали, транспозиции) изменяют порядок следования пикселей в паттерне RGGB, что приводит к перемешиванию цветовых каналов и утрате физической согласованности. Для сохранения целостности структуры мозаики допустимы только преобразования, принадлежащие группе симметрии квадрата D₄: отражения по горизонтали/вертикали и повороты на углы, кратные 90°. Эти аугментации реализованы синхронно для LQ и HQ с использованием функций `torchvision.transforms.functional`.
-
-## 6. Необходимость частотной функции потерь
-
-Пиксельные лоссы (L1, L2) обладают низкой чувствительностью к ошибкам в высокочастотной области спектра, что критично для демозаики: именно высокие частоты (контуры, текстуры, микроузор) наиболее подвержены муару и цветовым артефактам. Оригинальный NAFNet не включает частотных регуляризаторов. В работе разработан и интегрирован **Focal Frequency Loss (FFL)** [3] в двух модификациях – линейной и логарифмической. FFL минимизирует квадрат разности амплитудных спектров предсказания и эталона с фокальным взвешиванием, что позволяет модели целенаправленно восстанавливать утерянные пространственные частоты.
-
-## 7. Стабилизация градиентного потока
-
-Применение FFL на ранних эпохах обучения, особенно с малым датасетом, порождает экстремальные значения градиентов, что приводит к появлению NaN и расходимости процесса. Оригинальный код NAFNet не содержит механизмов подавления этой нестабильности. В цикл обучения внесён клиппинг градиентов: `torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)` после вызова `loss.backward()` и до `optimizer.step()`.
+> **Навигация:** Для псевдокода алгоритмов см. [ALGORITHM.md](ALGORITHM.md). Для конфигурации – [CONFIG.md](CONFIG.md) (если есть). Для запуска обучения – `run_training.py -opt config.yml`.
 
 ---
-
-## Резюме модификаций
-
-| Компонент | Оригинальный NAFNet | Реализованная адаптация | Модуль |
-|-----------|---------------------|--------------------------|--------|
-| Входные каналы | 3 | 4 (с перенастройкой `conv_first`) | `model_utils.py` |
-| Апскейлинг | отсутствует | `PixelShuffle(upscale_factor)` в обёртке | `model_utils.py` |
-| Загрузка предобученных весов | прямая | частичный перенос с фильтрацией (строгий режим `False`) | `model_utils.py` |
-| Соотношение LQ/HQ | 1:1 (или 1:2 после апскейла) | `gt_size = upscale_factor * lq_size` (динамический параметр) | `training_dataset_nef.py` |
-| Аугментации | произвольные | синхронные, группа D₄ (90°, отражения) | `training_dataset_nef.py` |
-| Функция потерь | L1 / L2 | комбинированная: L1 + FFL (линейный или логарифмический) | `training_losses.py` |
-| Стабилизация | отсутствует | клиппинг градиентов (max_norm=1.0) | `run_training.py` |
-
-Все перечисленные изменения объединены в единый программный конвейер (модули `libraries/`), что позволяет выполнять сквозное обучение модели JDSR на синтетических датасетах и применять её для восстановления реальных RAW‑изображений.
-
----
-
 
 ## 1. Общая архитектура конвейера
 
@@ -68,7 +15,8 @@
 
 | Скрипт | Фаза | Назначение |
 |--------|------|-------------|
-| `run_pipeline.py` | Генерация датасета + предобученческие проверки | Создаёт пары (LQ, HQ) из исходных резких изображений, выполняет визуальный контроль и smoke‑тест градиентов. |
+| `prepare_dataset.py` | Генерация датасета | Создаёт пары (LQ, HQ) из исходных резких изображений. |
+| `run_pipeline.py` | Предобученческие проверки | Визуальный контроль, smoke‑тест градиентов (использует сгенерированный датасет). |
 | `run_training.py` | Обучение модели | Загружает датасет, инициализирует модель, оптимизатор, лосс, запускает цикл эпох, логирует метрики, сохраняет чекпоинты, валидирует. |
 | `evaluate_baseline.py` | Бенчмарк классических методов | Применяет билинейную и MHC демозаику к тестовым LQ, вычисляет PSNR/SSIM. |
 | `plot_metrics.py` | Построение графиков | Визуализирует логи обучения (loss, PSNR, SSIM, LR и др.). |
@@ -82,23 +30,23 @@
 
 | Файл | Отвечает за | Используется в |
 |------|-------------|----------------|
-| `config.py` | Парсинг аргументов командной строки, загрузка YAML‑конфига, подстановка `{name}` в пути. | Все скрипты |
+| `config.py` | Парсинг аргументов командной строки, загрузка YAML‑конфига, подстановка `{name}` в пути, проверка обязательности `network_g.upscale_factor`, предупреждение об устаревшем `datasets.train.upscale_factor`. | Все скрипты |
 | `logger.py` | Настройка двухпоточного логгирования (консоль + файл). | Все скрипты |
 | `device.py` | Определение устройства (CUDA/CPU). | `run_pipeline.py`, `run_training.py` |
 | `pipeline_prepare.py` | Проверка/очистка датасета, вызов генерации (`process_source_images`). | `run_pipeline.py` |
-| `pipeline_generation_io.py` | Чтение исходных изображений, вызов `generate_lq_from_hq` для каждого файла, сохранение LQ/HQ. | `pipeline_prepare.py` |
-| `pipeline_generation_core.py` | **Ядро деградации:** уменьшение разрешения, PSF‑размытие, маска Байера, добавление шума, упаковка в 4 канала. | `pipeline_generation_io.py`, `video_degradation.py` |
+| `pipeline_generation_io.py` | Чтение исходных изображений, вызов `generate_lq_from_hq` для каждого файла, сохранение LQ/HQ в `lq_inputs/`, `hq_targets/`. | `pipeline_prepare.py` |
+| `pipeline_generation_core.py` | **Ядро деградации:** оптическое уменьшение (`downscale_factor`), PSF‑размытие, маска Байера, добавление шума, упаковка в 4 канала. | `pipeline_generation_io.py`, `video_degradation.py` |
 | `degradation_ops.py` | Низкоуровневые операции: создание PSF‑ядра, свёртка, добавление шума (коррелированного/некоррелированного), маска Байера, извлечение субканалов. | `pipeline_generation_core.py` |
-| `training_dataset_nef.py` | Класс `CustomNEFPairDataset` – загрузка пар LQ/HQ, случайный кроп, синхронные аугментации (flip, rot90). | `run_training.py` (через `training_utils.create_train_loader`) |
-| `model_utils.py` | Создание NAFNet с обёрткой `NAFNetDemosaicSuperResolutionWrapper`, загрузка предобученных весов (частичный перенос). | `run_pipeline.py`, `run_training.py` |
-| `training_utils.py` | Вспомогательные функции для обучения: `create_train_loader`, `create_optimizer_and_scheduler`, `compute_metrics`, `log_progress`, `cleanup_experiment`. | `run_training.py` |
-| `training_losses.py` | Комбинированная потеря `CombinedLoss` (L1 + FFL) и классы `FocalFrequencyLoss` / `FocalFrequencyLossLog`. | `run_training.py` |
-| `training_logger.py` | Класс `TrainingLogger` – логирование в TensorBoard, CSV, текстовый файл. | `run_training.py` |
-| `training_validator.py` | Класс `VisualValidator` – валидация на тестовой выборке (центральный кроп, инференс, расчёт SSIM, сохранение предсказаний). | `run_training.py` |
+| `training_dataset_nef.py` | Класс `CustomNEFPairDataset` – загрузка пар LQ/HQ, случайный кроп, синхронные аугментации (flip, rot90 отключены). Читает `upscale_factor` из `network_g`. | `run_training.py` (через `training_utils.create_train_loader`) |
+| `model_utils.py` | Создание NAFNet с обёрткой `NAFNetDemosaicSuperResolutionWrapper`, загрузка предобученных весов (частичный перенос с `strict=False`). `upscale_factor` берётся из `network_g`. | `run_pipeline.py`, `run_training.py` |
+| `training_utils.py` | Вспомогательные функции: `create_train_loader`, `create_optimizer_and_scheduler`, `compute_metrics` (с передачей `current_epoch`), `log_progress`, `cleanup_experiment`. | `run_training.py` |
+| `training_losses.py` | Комбинированная потеря `CombinedLoss` (L1 + FFL). Поддерживает `ffl_start_epoch` (прогрев: до указанной эпохи FFL отключён). | `run_training.py` |
+| `training_logger.py` | Класс `TrainingLogger` – логирование в CSV (`train_metrics.csv`, `val_metrics.csv`), текстовый файл, TensorBoard. | `run_training.py` |
+| `training_validator.py` | Класс `VisualValidator` – валидация на тестовой выборке (центральный кроп, инференс, расчёт SSIM **и PSNR**), сохранение предсказаний. Использует `upscale_factor` из `network_g`. | `run_training.py` |
 | `training_checkpoint.py` | Сохранение и загрузка чекпоинтов с поддержкой аварийного возобновления (флаг `is_emergency`). | `run_training.py` |
-| `pipeline_visuals.py` | Визуальный контроль: билинейная демозаика LQ, сохранение превью (LQ и HQ). | `run_pipeline.py` |
+| `pipeline_visuals.py` | Визуальный контроль: билинейная демозаика LQ (превью), сохранение LQ и HQ изображений с коррекцией цветового пространства (RGB→BGR). | `run_pipeline.py` |
 | `pipeline_smoke.py` | Smoke‑тест: один прямой и обратный проход с комбинированным лоссом для проверки градиентов и VRAM. | `run_pipeline.py` |
-| `evaluate_baseline.py` | Реализация билинейной и MHC демозаики, расчёт PSNR/SSIM. | `evaluate_baseline.py` (скрипт верхнего уровня вызывает её) |
+| `evaluate_baseline.py` | Реализация билинейной и MHC демозаики, расчёт PSNR/SSIM. | `evaluate_baseline.py` (скрипт верхнего уровня) |
 | `video_utils.py` | Открытие/запись видео, конвертация кадров в тензоры и обратно. | `process_video.py` |
 | `video_degradation.py` | Применение `generate_lq_from_hq` к кадру видео и ресайз до целевого размера. | `process_video.py` |
 | `video_inference.py` | Загрузка модели, цикл покадровой обработки видео. | `process_video.py` |
@@ -109,84 +57,75 @@
 
 ### 3.1. Генерация синтетического LQ (физическая деградация)
 
-Вход: **резкое RGB** – `hq_rgba` (uint8, H×W×3) – исходное изображение из папки `source_images_dir`.
+Вход: **резкое RGB** – `hq_rgb` (uint8, H×W×3) из папки `source_images_dir`.
 
 **Шаги (функция `generate_lq_from_hq` в `pipeline_generation_core.py`):**
 
-1. **Таргет (HQ)** – сохраняется как есть (H×W×3, uint8).
-2. **Уменьшение разрешения** (опционально, `downscale_factor`):  
-   `hq_small = resize(hq_rgb, (H/downscale, W/downscale))` → float32 [0,1].
+1. **Вырезание центрального HQ-патча** размера `gt_size` (из конфига). Координаты выравниваются по модулю 4 для сохранения фазы RGGB.
+2. **Оптическое уменьшение** в `downscale_factor` раз (билинейная интерполяция).  
+   `hq_small = cv2.resize(hq_patch, (gt_size//downscale, gt_size//downscale))` → float32 [0,1].
 3. **PSF‑размытие** (свёртка с гауссианой, sigma = `psf_sigma`):  
    `hq_blurred = conv2d(hq_small, psf_kernel)` → float32 [0,1].
 4. **Маска Байера (RGGB)**:  
-   `bayer = apply_bayer_mask_float(hq_blurred)` → массив (H_small, W_small, 1) float32.
+   `bayer = apply_bayer_mask_float(hq_blurred)` → массив (gt_size//downscale, gt_size//downscale) float32.
 5. **Добавление шума** (если `add_noise = true`):  
-   - Мощность сигнала: `signal_power = mean(bayer^2)`.
-   - Мощность шума: `noise_power = signal_power / 10^(SNR/10)`.
-   - Белый шум: `white_noise ~ N(0, sqrt(noise_power))`.
-   - Для коррелированного шума: `correlated_noise = conv2d(white_noise, psf_kernel)`.
-   - `bayer += noise` → clip [0,1].
+   - Для некоррелированного шума: `bayer += N(0, sqrt(noise_power))`.  
+   - Для коррелированного: сначала белый шум, затем свёртка с PSF-ядром.
 6. **Упаковка в 4 канала** (субдискретизация):  
-   `lq_packed = extract_bayer_subchannels(bayer)` → (H_small/2, W_small/2, 4) float32.
-7. **Сохранение** как uint16 TIFF.
+   `lq_packed = extract_bayer_subchannels(bayer)` → (gt_size//downscale//2, gt_size//downscale//2, 4) float32.
+7. **Сохранение** как uint16 TIFF в `train/lq_inputs/` или `test/lq_inputs/`.
 
-**Размерности:**  
-`hq_rgb` (H, W, 3) → после downscale (H/d, W/d, 3) → после блюра (H/d, W/d, 3) → после маски (H/d, W/d) → после упаковки (H/(2d), W/(2d), 4).  
-
-Для `downscale_factor=4` итоговый LQ имеет размер (H/8, W/8, 4).
-
----
+**Итоговое сжатие:** общее уменьшение линейного размера от HQ до LQ = `downscale_factor × 2`.  
+Например, `downscale_factor=2` → LQ в 4 раза меньше HQ.
 
 ### 3.2. Загрузка данных в обучении (класс `CustomNEFPairDataset`)
 
 - **LQ**: читается TIFF → float32 / 65535 → (h_lq, w_lq, 4).
 - **HQ**: читается PNG → float32 / 255 → (h_hq, w_hq, 3).
 
+**Проверка геометрии:**  
+`assert h_hq == upscale_factor * h_lq and w_hq == upscale_factor * w_lq`.  
+`upscale_factor` берётся из `opt['network_g']['upscale_factor']` (единый источник).
+
 **Кроп:**  
-- Случайные координаты `(top_lq, left_lq)` в диапазоне, чтобы поместился патч `lq_size × lq_size`.  
+- Случайные координаты `(top_lq, left_lq)` для патча `lq_size × lq_size`.
 - Соответствующий кроп в HQ: `top_hq = top_lq * upscale_factor`, `left_hq = left_lq * upscale_factor`, размер `gt_size = upscale_factor * lq_size`.
 
 **Аугментации (синхронные):**  
 - `torchvision.transforms.functional.hflip / vflip` (вероятность 0.5).  
-- `TF.rotate` на `k * 90°`, k ∈ {0,1,2,3}.
+- Повороты на 90° отключены (так как нарушают порядок каналов RGGB).
 
 **Выход:**  
-- LQ тензор: `(4, lq_size, lq_size)` float32 [0,1].  
+- LQ тензор: `(4, lq_size, lq_size)` float32 [0,1].
 - HQ тензор: `(3, gt_size, gt_size)` float32 [0,1].
-
----
 
 ### 3.3. Прямой проход модели (`NAFNetDemosaicSuperResolutionWrapper`)
 
 Модель состоит из:
 1. **Базовый NAFNet** (вход 4 канала, выход 4 канала, без изменения пространственного размера).
 2. **Upsample block**: `Conv2d(4, out_ch * upscale_factor², 3,1) + PixelShuffle(upscale_factor)`.
+3. **Адаптер каналов** для совместимости с предобученными весами SIDD (4→3 и обратно).
 
 **Поток:**  
-`lq` (4, lq_size, lq_size) → NAFNet → `mid` (4, lq_size, lq_size) → Conv2d(4→12, если upscale_factor=2) → `mid2` (12, lq_size, lq_size) → PixelShuffle(2) → `out` (3, 2*lq_size, 2*lq_size).
+`lq` (4, lq_size, lq_size) → NAFNet → `mid` (4, lq_size, lq_size) → Upsample block → `out` (3, lq_size*upscale, lq_size*upscale).
 
-Для `upscale_factor=8` Conv2d(4 → 3*64=192) и PixelShuffle(8) даст (3, 8*lq_size, 8*lq_size).
+Для `upscale_factor=4` и `lq_size=128` выход будет `(3, 512, 512)`, что соответствует `gt_size`.
 
 **Выход сети:** `pred` (B, 3, gt_size, gt_size) в диапазоне `[0,1]` (без сигмоиды, loss сам ограничивает).
-
----
 
 ### 3.4. Расчёт лосса и обратное распространение
 
 Используется `CombinedLoss` из `training_losses.py`:
 
 - **L1Loss** между `pred` и `target` (MAE).
-- **FocalFrequencyLoss** (или его логарифмическая версия):
-  - БПФ → `fft_pred`, `fft_target` (комплексные).
-  - Амплитуды: `amp_pred = abs(fft_pred)`, `amp_target = abs(fft_target)`.
-  - Квадрат разности: `dist = (amp_pred - amp_target)^2`.
-  - Фокальный вес: `weight = (dist / max(dist))^alpha`.
-  - `ffl = mean(weight * dist) * loss_weight`.
+- **FocalFrequencyLoss** (логарифмическая версия по умолчанию, `ffl_type="log"`):
+  - БПФ → амплитуды → логарифмическое сжатие → взвешенная квадратичная ошибка с фокальным весом.
+- **Прогрев:** параметр `ffl_start_epoch` (в конфиге, например 20). Пока `current_epoch < ffl_start_epoch`, `ffl_weight` эффективно равен 0.
 - `total_loss = l1_weight * l1 + ffl_weight * ffl`.
 
 Затем:
 1. `total_loss.backward()`
-2. `clip_grad_norm_(model.parameters(), max_norm=1.0)`
+2. `torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)` – стабилизация градиентов.
 3. `optimizer.step()`
 
 ---
@@ -204,44 +143,49 @@ for epoch in range(start_epoch, num_epochs):
         
         pred = model(lq)                     # forward
         
-        metrics = compute_metrics(pred, hq, criterion, loss_type)
+        metrics = compute_metrics(pred, hq, criterion, loss_type, current_epoch=epoch)
         total_loss = metrics['total_loss']
         
         total_loss.backward()                # backward
         clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
         
-        # логирование
+        # логирование (CSV, текст, TensorBoard)
         train_logger.log_metrics(...)
         log_progress(...)
         
         global_step += 1
     
     scheduler.step()                         # обновление LR
+    
     if (epoch+1) % validation_freq == 0:
-        validator.run_validation(model, epoch, device)
+        mean_ssim, mean_psnr = validator.run_validation(model, epoch, device)
+        train_logger.log_validation_metrics(epoch, mean_ssim, mean_psnr)
+    
     if (epoch+1) % save_checkpoint_epoch == 0:
         save_checkpoint(...)
 ```
 
 **Где что находится:**
 - `train_loader` создаётся через `training_utils.create_train_loader`, который вызывает `CustomNEFPairDataset`.
-- `model` создаётся через `model_utils.create_nafnet_model` (с возможностью загрузки предобученных весов).
+- `model` создаётся через `model_utils.create_nafnet_model` (с возможностью частичной загрузки предобученных весов).
 - `criterion` – `CombinedLoss` (если `losses.type = "combined"`) или `L1Loss`.
-- `optimizer` – AdamW, `scheduler` – CosineAnnealingLR.
+- `optimizer` – AdamW, `scheduler` – MultiStepLR (или другой).
 - `train_logger` – экземпляр `TrainingLogger` (пишет в CSV, текст, TensorBoard).
-- `validator` – `VisualValidator` (валидация на тестовой выборке).
+- `validator` – `VisualValidator` (валидация с центральным кропом, возвращает SSIM и PSNR).
 
 ---
 
-## 5. Валидация (центральный кроп и SSIM)
+## 5. Валидация (центральный кроп, SSIM и PSNR)
 
 1. Для каждого файла в `test/lq_inputs/` загружается 4‑канальный TIFF.
 2. Вырезается **центральный кроп** размера `lq_size` (координаты `(H/2 - lq_size/2, W/2 - lq_size/2)`).
 3. Инференс модели → получаем RGB размером `gt_size = upscale_factor * lq_size`.
 4. Из соответствующего HQ (PNG) вырезается центральный кроп с координатами, умноженными на `upscale_factor`, и размером `gt_size`.
-5. Сравнение через `skimage.metrics.structural_similarity` (SSIM).
-6. Результаты сохраняются в `val_metrics.csv`, средний SSIM выводится в лог.
+5. Сравнение:
+   - **SSIM** через `skimage.metrics.structural_similarity` (data_range=255).
+   - **PSNR** через собственный расчёт MSE и формулу: `20 * log10(255 / sqrt(MSE))`.
+6. Результаты сохраняются в `val_metrics.csv` (колонки `epoch`, `ssim`, `psnr`), средние значения выводятся в лог.
 
 ---
 
@@ -254,11 +198,11 @@ for epoch in range(start_epoch, num_epochs):
 | Упаковка Байера в 4 канала | `degradation_ops.py` → `extract_bayer_subchannels` |
 | Загрузка пар LQ/HQ с кропом и аугментациями | `training_dataset_nef.py` → `CustomNEFPairDataset` |
 | Архитектура NAFNet + PixelShuffle | `model_utils.py` → `NAFNetDemosaicSuperResolutionWrapper`, `create_nafnet_model` |
-| Комбинированная потеря (L1+FFL) | `training_losses.py` → `CombinedLoss`, `FocalFrequencyLoss`, `FocalFrequencyLossLog` |
+| Комбинированная потеря (L1+FFL) с прогревом | `training_losses.py` → `CombinedLoss`, `FocalFrequencyLoss`, `FocalFrequencyLossLog` |
 | Цикл обучения | `run_training.py` → `main` |
-| Логирование метрик | `training_logger.py` → `TrainingLogger` |
-| Валидация (SSIM) | `training_validator.py` → `VisualValidator.run_validation` |
-| Чекпоинты (сохранение/загрузка) | `training_checkpoint.py` → `save_checkpoint`, `load_checkpoint` |
+| Логирование метрик (CSV, TensorBoard) | `training_logger.py` → `TrainingLogger` |
+| Валидация (SSIM+PSNR) | `training_validator.py` → `VisualValidator.run_validation` |
+| Чекпоинты (сохранение/загрузка с emergency) | `training_checkpoint.py` → `save_checkpoint`, `load_checkpoint` |
 | Билинейная и MHC демозаика (baseline) | `evaluate_baseline.py` → `bilinear_demosaic`, `mhc_demosaic` |
 | Визуальный контроль (превью) | `pipeline_visuals.py` → `run_visual_control`, `bilinear_demosaic_rggb` |
 | Smoke‑тест | `pipeline_smoke.py` → `run_smoke_test` |
@@ -268,30 +212,31 @@ for epoch in range(start_epoch, num_epochs):
 
 ## 7. Рекомендации по навигации в коде
 
-- **Хотите изменить физику деградации** (PSF, шум)? → `pipeline_generation_core.py` и `degradation_ops.py`.
+- **Хотите изменить физику деградации** (PSF, шум, масштабирование)? → `pipeline_generation_core.py` и `degradation_ops.py`.
 - **Хотите добавить новую аугментацию**? → `training_dataset_nef.py` (метод `__getitem__`).
-- **Хотите модифицировать архитектуру сети** (например, width, depth)? → измените секцию `network_g` в YAML; сама обёртка – `model_utils.py`.
-- **Хотите изменить функцию потерь**? → `training_losses.py` и секция `losses` в конфиге.
-- **Хотите добавить метрику в логи**? → `training_logger.py` и `train`/`logger` в конфиге.
+- **Хотите модифицировать архитектуру сети** (ширина, глубина)? → измените секцию `network_g` в YAML; сама обёртка – `model_utils.py`.
+- **Хотите изменить функцию потерь** (веса, эпоху прогрева)? → `training_losses.py` и секция `losses` в конфиге.
+- **Хотите добавить метрику в логи**? → `training_logger.py` и секция `logger` в конфиге.
 - **Хотите изменить частоту валидации или сохранения**? → параметры `validation_freq`, `save_checkpoint_epoch` в конфиге.
 
 ---
 
 ## 8. Типичный поток данных (с примерами размерностей)
 
-Возьмём конфиг с `downscale_factor=4`, `upscale_factor=8`, `lq_size=128`, `gt_size=1024`.
+Возьмём конфиг: `downscale_factor=2`, `upscale_factor=4`, `gt_size=512`, `lq_size=128`.
 
 | Этап | Размерность | Тип | Примечание |
 |------|-------------|-----|-------------|
 | Исходное RGB (source) | (H, W, 3) | uint8 | H, W – любые, например 4000×6000 |
-| После downscale (4) | (H/4, W/4, 3) | float32 | (1000, 1500) |
-| После маски Байера | (H/4, W/4) | float32 | одноканальный Bayer |
-| После упаковки (LQ на диске) | (H/8, W/8, 4) | uint16 | (500, 750, 4) |
+| Центральный HQ-патч | (512, 512, 3) | uint8 | вырезан и сохранён как PNG |
+| После downscale (2) | (256, 256, 3) | float32 | `512 // 2 = 256` |
+| После маски Байера | (256, 256) | float32 | одноканальный Bayer |
+| После упаковки (LQ на диске) | (128, 128, 4) | uint16 | `256 // 2 = 128` |
 | Кроп LQ в датасете | (128, 128, 4) | float32 [0,1] | `lq_size=128` |
 | Вход в NAFNet | (4, 128, 128) | float32 | тензор после transpose |
 | Выход NAFNet (латентный) | (4, 128, 128) | float32 | без изменения пространства |
-| После Conv2d+PixelShuffle(8) | (3, 1024, 1024) | float32 | `gt_size=1024` |
-| Таргет (HQ кроп) | (3, 1024, 1024) | float32 | загружен из PNG |
+| После Conv2d+PixelShuffle(4) | (3, 512, 512) | float32 | `128*4 = 512` |
+| Таргет (HQ кроп) | (3, 512, 512) | float32 | загружен из PNG |
 | Лосс (L1 + FFL) | скаляр | float | – |
 
 ---
@@ -301,17 +246,24 @@ for epoch in range(start_epoch, num_epochs):
 Данная архитектура обеспечивает:
 - **Модульность** – каждый этап (генерация, загрузка, модель, лосс, валидация, логирование) выделен в отдельный файл/класс.
 - **Конфигурируемость** – поведение меняется через YAML без правки кода.
-- **Физическую корректность** – деградация соответствует реальному тракту (PSF, Байер, коррелированный шум).
-- **Воспроизводимость** – фиксированный seed, детерминированные аугментации (повороты кратны 90°), чёткая логика возобновления.
+- **Физическую корректность** – деградация соответствует реальному тракту (оптическое уменьшение, PSF, Байер, коррелированный шум).
+- **Стабильность обучения** – клиппинг градиентов, прогрев FFL, аварийное возобновление.
+- **Полноту метрик** – логируются train loss, PSNR, LR, градиенты, TV ratio, VRAM; validation – SSIM и PSNR.
 
-Для детального изучения каждого компонента используйте ссылки на соответствующие файлы в таблице выше и документацию.
+Для детального изучения каждого компонента используйте ссылки на соответствующие файлы в таблице выше.
 
 ---
 
-**Дата последнего обновления:** 2026-06-06  
-**Версия:** 1.0
+**Дата последнего обновления:** 2026-06-07  
+**Версия:** 2.0 (полное соответствие коду)
+```
 
-**Литература**  
-[1] Chen, L., Chu, X., Zhang, X., Sun, J. (2022). Simple Baselines for Image Restoration. ECCV.  
-[2] Shi, W., et al. (2016). Real-Time Single Image and Video Super-Resolution Using an Efficient Sub-Pixel Convolutional Neural Network. CVPR.  
-[3] Jiang, L., et al. (2020). Focal Frequency Loss for Generative Models. ArXiv:2012.12821.
+Этот документ теперь отражает все исправления, включая:
+- Единый `upscale_factor` из `network_g`.
+- Использование `downscale_factor` в генерации.
+- Прогрев FFL (`ffl_start_epoch`).
+- Валидатор, возвращающий PSNR.
+- Клиппинг градиентов.
+- Удаление устаревшего датасета.
+- Правильные пути в `run_pipeline.py`.
+- Импорт `math` и т.д.

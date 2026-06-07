@@ -1,6 +1,7 @@
 import os
 import torch
 import shutil
+import math
 from torch.utils.data import DataLoader
 from libraries.config import get_pipeline_config
 from libraries.device import get_torch_device
@@ -9,6 +10,9 @@ from libraries.model_utils import create_nafnet_model
 from libraries.logger import setup_logger, get_logger
 # from libraries.training_checkpoint import get_checkpoint_path, load_checkpoint
 import torch.nn as nn
+
+# Инициализируем оператор один раз на уровне модуля, чтобы не плодить сущности на каждом батче
+_mse_criterion = nn.MSELoss()
 
 def log_progress(logger, exp_name, epoch, total_epochs, batch_idx, total_batches,
                  loss_val, psnr_val, device, print_freq, vram=None):
@@ -165,29 +169,47 @@ def get_loss_criterion(opt, logger):
         logger.info("Используется стандартная L1Loss")
     return criterion, loss_type
 
-def calculate_psnr(mse_loss):
-    if mse_loss == 0:
-        return float('inf')
-    # 🎯 ИСПРАВЛЕНО: Добавляем .item() на самом раннем этапе. Теперь это обычный float!
-    return (20 * torch.log10(1.0 / torch.sqrt(mse_loss))).item()
+def calculate_psnr(mse):
+    """
+    Безопасный расчёт PSNR из тензора MSE.
+    """
+    # Переводим тензор в число CPU, чтобы избежать ошибок ветвления PyTorch
+    mse_val = mse.item() if isinstance(mse, torch.Tensor) else mse
+    
+    if mse_val == 0:
+        return 100.0
+    return 20 * math.log10(1.0 / math.sqrt(mse_val))
 
-def compute_metrics(out, target, criterion, loss_type):
+
+def compute_metrics(out, target, criterion, loss_type, current_epoch=0):
+    """
+    Вычисляет комбинированный лосс и оперативные метрики для текущего батча
+    с учётом временной фазы прогрева графа вычислений.
+    """
+    # 1. Обсчёт целевых функций потерь с учётом эпохи прогрева
     if loss_type == 'combined':
-        total_loss, l1_val, ffl_val = criterion(out, target)
+        total_loss, l1_val, ffl_val = criterion(out, target, current_epoch=current_epoch)
     else:
         total_loss = criterion(out, target)
         l1_val = total_loss.item()
         ffl_val = 0.0
 
-    mse = nn.MSELoss()(out, target).detach()
-    psnr = calculate_psnr(mse)  # Чистый float
-    
-    return {
+    # 2. Прецизионный расчёт оперативного PSNR через глобальный экземпляр
+    # Извлекаем чистое число через .item(), полностью ликвидируя риски булевой двусмысленности тензоров!
+    mse_tensor = _mse_criterion(out, target).detach()
+    psnr_val = calculate_psnr(mse_tensor.item())  # Передаём чистый float
+
+    # 3. Собираем монолитный админский словарь метрик для run_training.py
+    metrics = {
         'total_loss': total_loss,
-        'l1_val': l1_val,
-        'ffl_val': ffl_val,
-        'psnr': psnr  # Безопасно для логгеров, без блокировок CUDA
+        'l1_loss': l1_val,
+        'ffl_loss': ffl_val,
+        'psnr': psnr_val
     }
+    
+    return metrics
+
+
 
 def cleanup_experiment(opt, save_dir, logger):
     if not opt.get('clean_training', False):

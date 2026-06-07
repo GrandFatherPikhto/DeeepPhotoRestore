@@ -92,6 +92,7 @@ losses:
   type: "combined"
   l1_weight: 1.5
   ffl_weight: 0.2
+  ffl_start_epoch: 20           # 🎯 СТАЛО: Новая веха автоматического включения FFL
   ffl_alpha: 1.5
   ffl_log_factor: 100.0
   ffl_type: "log"
