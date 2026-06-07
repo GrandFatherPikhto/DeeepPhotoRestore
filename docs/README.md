@@ -117,13 +117,13 @@ python plot_metrics.py -opt configs/plot_metrics.yml
 
 | Файл | Содержание |
 |------|-------------|
-| [PIPELINE.md](PIPELINE.md) | Пошаговые инструкции по запуску всех этапов |
-| [TRAINING.md](TRAINING.md) | Гиперпараметры, мониторинг, интерпретация метрик |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Структура кода, потоки данных, таблица модулей |
-| [ALGORITHM.md](ALGORITHM.md) | Описание алгоритмов (деградация, демозаика, FFL) |
-| [UPDOWN_SCALE.md](UPDOWN_SCALE.md) | Детальное объяснение масштабирования (downscale/upscale) |
-| [CHANGES.md](CHANGES.md) | Журнал архитектурных изменений |
-| [PLOT.md](PLOT.md) | Настройка визуализации метрик |
+| [PIPELINE.md](docs/PIPELINE.md) | Пошаговые инструкции по запуску всех этапов |
+| [TRAINING.md](docs/TRAINING.md) | Гиперпараметры, мониторинг, интерпретация метрик |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Структура кода, потоки данных, таблица модулей |
+| [ALGORITHM.md](docs/ALGORITHM.md) | Описание алгоритмов (деградация, демозаика, FFL) |
+| [UPDOWN_SCALE.md](docs/UPDOWN_SCALE.md) | Детальное объяснение масштабирования (downscale/upscale) |
+| [CHANGES.md](docs/CHANGES.md) | Журнал архитектурных изменений |
+| [PLOT.md](docs/PLOT.md) | Настройка визуализации метрик |
 
 ---
 

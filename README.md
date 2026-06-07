@@ -125,10 +125,16 @@ python plot_metrics.py -opt configs/plot_metrics.yml
 | [ALGORITHM.md](docs/ALGORITHM.md) | Описание алгоритмов (деградация, демозаика, FFL) |
 | [CONFIG.md](docs/CONFIG.md) | Описание всех параметров YAML‑конфигурации |
 | [UPDOWN_SCALE.md](docs/UPDOWN_SCALE.md) | Детальное объяснение масштабирования (downscale/upscale) |
-| [CHANGES.md](docs/CHANGES.md) | Журнал архитектурных изменений |
 | [PLOT.md](docs/PLOT.md) | Настройка визуализации метрик |
 | [CONTRIBUTING.md](docs/CONTRIBUTING.md) | Правила для разработчиков |
-
+| [CHANGES.md](docs/changes/CHANGES.md) | Журнал архитектурных изменений №8|
+| [CHANGES.md](docs/changes/CHANGES_07.md) | Журнал архитектурных изменений №7|
+| [CHANGES.md](docs/changes/CHANGES_06.md) | Журнал архитектурных изменений №6|
+| [CHANGES.md](docs/changes/CHANGES_05.md) | Журнал архитектурных изменений №5|
+| [CHANGES.md](docs/changes/CHANGES_04.md) | Журнал архитектурных изменений №4|
+| [CHANGES.md](docs/changes/CHANGES_03.md) | Журнал архитектурных изменений №3|
+| [CHANGES.md](docs/changes/CHANGES_02.md) | Журнал архитектурных изменений №2|
+| [CHANGES.md](docs/changes/CHANGES_01.md) | Журнал архитектурных изменений №1|
 ---
 
 ## 🧪 Технологический стек
