@@ -1,19 +1,19 @@
 # Главная проблема: слишком агрессивный FFL включён слишком рано и с малым весом, плюс шум 20 dB убивает высокие частоты.
-name: NAFNet-100-01       # Название эксперимента и папки в experiments/
+name: NAFNet-200-01       # Название эксперимента и папки в experiments/
 manual_seed: 42                  # Фиксация случайных чисел
 
 path:
-  source_images_dir: "/home/grand/Images/NEF_Test_100"  # 100 кадров-доноров
-  dataset_root: "datasets/nef_nafnet_100_01"              # Корневая папка датасета
-  resume_path: "experiments/{name}/checkpoints/resume_nef_nafnet_100_01.pth"
+  source_images_dir: "/home/grand/Images/NEF_Test_200"  # 100 кадров-доноров
+  dataset_root: "datasets/{name}"              # Корневая папка датасета
+  resume_path: "experiments/{name}/checkpoints/resume_nef_nafnet.pth"
 
 # Секция для скрипта генерации графиков plot_metrics.py
-experiment_dir: "experiments/NAFNet-100-01"
-output_dir: "experiments/NAFNet-100-01/figures"
+experiment_dir: "experiments/{name}"
+output_dir: "experiments/{name}/figures"
 
 data_files:
-  train_metrics: "experiments/NAFNet-100-01/train_metrics.csv"
-  val_metrics: "experiments/NAFNet-100-01/val_metrics.csv"
+  train_metrics: "experiments/{name}/train_metrics.csv"
+  val_metrics: "experiments/{name}/val_metrics.csv"
 
 datasets:
   train:
