@@ -1,11 +1,7 @@
-## ✅ PLOT.md – версия 2.0 (актуальная)
-
-Ниже приведён обновлённый `PLOT.md`, который учитывает новые столбцы в `train_metrics.csv` (`l1_loss`, `ffl_loss`, `delta_psnr`, `grad_var`, `tv_ratio`) и наличие `psnr` в `val_metrics.csv`. Также добавлены рекомендации по построению сравнительных графиков с baseline.
-
-```markdown
 # PLOT.md – Визуализация метрик обучения
 
-Скрипт `plot_metrics.py` строит графики на основе CSV‑файлов, сгенерированных в процессе обучения (`train_metrics.csv`, `val_metrics.csv`). Для настройки внешнего вида и выбора данных используется конфигурационный YAML‑файл (например, `plot_metrics.yml`).
+Скрипт `plot_metrics.py` строит графики на основе CSV‑файлов, сгенерированных в процессе обучения (`train_metrics.csv`, `val_metrics.csv`). Для настройки внешнего вида и выбора данных используется конфигурационный YAML‑файл (например, `plot_metrics.yml`).  
+После рефакторинга `plot_metrics.py` разбит на модули: `libraries/plot_utils.py` (утилиты, загрузка, подстановка `{name}`) и `libraries/plot_functions.py` (функции построения графиков). Корневой скрипт стал компактнее.
 
 ---
 
@@ -13,27 +9,23 @@
 
 | Источник | Путь по умолчанию | Содержание |
 |----------|-------------------|-------------|
-| `train_metrics.csv` | `experiments/{name}/train_metrics.csv` | Шаг, loss, psnr, lr, delta_psnr, grad_var, tv_ratio, vram_alloc_gb, vram_res_gb, l1_loss, ffl_loss |
-| `val_metrics.csv` | `experiments/{name}/val_metrics.csv` | Эпоха, ssim, psnr |
+| `train_metrics.csv` | `experiments/{name}/train_metrics.csv` | step, loss, psnr, lr, delta_psnr, grad_var, tv_ratio, vram_alloc_gb, vram_res_gb, l1_loss, ffl_loss |
+| `val_metrics.csv` | `experiments/{name}/val_metrics.csv` | epoch, psnr, ssim |
 
 ---
 
 ## 2. Основные графики (пример конфигурации)
 
-Ниже приведён полный `plot_metrics.yml`, охватывающий все полезные визуализации:
+Ниже приведён полный `plot_metrics.yml`, охватывающий все полезные визуализации с учётом новых колонок.
 
 ```yaml
-experiment_dir: "experiments/RAW-NAFNet-Final-100"
-output_dir: "experiments/RAW-NAFNet-Final-100/figures"
+name: NAFNet-100-02                     # опционально, для подстановки {name}
+experiment_dir: "experiments/{name}"    # или явный путь, например "experiments/RAW-NAFNet-Final-100"
+output_dir: "experiments/{name}/figures"
 
 data_files:
-  train_metrics: "experiments/RAW-NAFNet-Final-100/train_metrics.csv"
-  val_metrics: "experiments/RAW-NAFNet-Final-100/val_metrics.csv"
-
-baseline:
-  psnr: 34.61
-  ssim: 0.9640
-  label: "Bilinear"
+  train_metrics: "experiments/{name}/train_metrics.csv"
+  val_metrics: "experiments/{name}/val_metrics.csv"
 
 plots:
   - type: line
@@ -78,7 +70,7 @@ plots:
       file_ref: train_metrics
       x: step
       y: psnr
-    baseline_value: 34.61
+    baseline_value: 34.61               # значение PSNR билинейной демозаики на вашем тесте
     baseline_label: "Bilinear"
     y_label: "PSNR (dB)"
     save: psnr_comparison.png
@@ -131,9 +123,9 @@ plots:
     data:
       source: val_csv
       x: epoch
-      y: [ssim, psnr]
+      y: [psnr, ssim]
     y_label: "Значение"
-    legend: ["SSIM (×100)", "PSNR (dB)"]
+    legend: ["PSNR (dB)", "SSIM (×100)"]
     save: val_metrics.png
 ```
 
@@ -156,7 +148,7 @@ plots:
 
 ### `type: comparison`
 Сравнение тренировочной кривой с горизонтальной линией (например, baseline).
-- `baseline_value` – числовое значение.
+- `baseline_value` – числовое значение (PSNR или SSIM).
 - `baseline_label` – подпись.
 
 ---
@@ -176,18 +168,21 @@ smoothed[i] = α * raw[i] + (1-α) * smoothed[i-1]
 
 ## 5. Особенности после рефакторинга (версия 2.0)
 
-- **`l1_loss` и `ffl_loss`** – теперь логируются отдельно, что позволяет оценить вклад каждой компоненты.
-- **`delta_psnr`** – изменение PSNR между шагами; около нуля говорит о плато.
-- **`grad_var`** – дисперсия норм градиентов; резкий рост может сигнализировать о нестабильности.
-- **`tv_ratio`** – отношение полной вариации выхода к таргету; значения >1 указывают на излишний шум, <0.5 – на чрезмерное сглаживание.
-- **Валидационный PSNR** – теперь сохраняется в `val_metrics.csv` (ранее был только SSIM).
+- **Поддержка `{name}`** – в конфиге `plot_metrics.yml` можно использовать `{name}` в путях (`experiment_dir`, `output_dir`, `data_files.*`). При запуске `plot_metrics.py` нужно либо указать `name` в YAML, либо передать `--name` в командной строке. Подстановка работает рекурсивно.
+- **Новые колонки** – `l1_loss`, `ffl_loss`, `delta_psnr`, `grad_var`, `tv_ratio` – все они доступны для построения.
+- **Валидационный PSNR** – теперь сохраняется в `val_metrics.csv` (колонка `psnr`).
+- **Модульность** – функции загрузки и построения вынесены в `libraries/plot_utils.py` и `libraries/plot_functions.py`. Это упрощает поддержку и переиспользование.
 
 ---
 
 ## 6. Запуск построения графиков
 
 ```bash
-python plot_metrics.py -opt configs/plot_metrics.yml
+# Если в plot_metrics.yml есть поле name
+python plot_metrics.py -opt options/plot/your_plot_config.yml
+
+# Если нужно переопределить имя эксперимента
+python plot_metrics.py -opt options/plot/your_plot_config.yml --name NAFNet-100-02
 ```
 
 Все графики сохранятся в папку, указанную в `output_dir` (обычно `experiments/{name}/figures/`).
@@ -208,20 +203,32 @@ python plot_metrics.py -opt configs/plot_metrics.yml
 
 | Проблема | Решение |
 |----------|---------|
-| Нет файла `train_metrics.csv` | Убедитесь, что в конфиге `logger.log_csv: true` и обучение запущено. |
-| График пустой или нет данных | Проверьте, что имена колонок в `y` совпадают с заголовками CSV (регистр важен). |
+| Нет файла `train_metrics.csv` | Убедитесь, что в конфиге обучения `logger.log_csv: true` и обучение запущено. |
+| График пустой или нет данных | Проверьте, что имена колонок в `y` совпадают с заголовками CSV (регистр важен). В `val_metrics.csv` колонки `epoch`, `psnr`, `ssim`. |
 | Сглаживание искажает кривую | Уменьшите `smoothing` (ближе к 1.0) или отключите (`smoothing: 1.0`). |
 | Не строятся графики из `val_csv` | Проверьте, что в `data.source` указано `val_csv` (не `csv`). |
+| `{name}` не заменяется | Убедитесь, что в конфиге `plot_metrics.yml` есть поле `name` или передан аргумент `--name`. |
+| Ошибка `KeyError: 'experiment_dir'` | Добавьте в конфиг обязательную секцию `experiment_dir`. |
 
 ---
 
-## 9. Связь с другими документами
+## 9. Расширение (добавление новых типов графиков)
+
+Чтобы добавить новый тип графика:
+1. Реализуйте функцию построения в `libraries/plot_functions.py` (например, `plot_histogram`).
+2. В `plot_metrics.py` добавьте ветку `elif plot_type == 'histogram':` в блоке обработки.
+3. Обновите документацию.
+
+---
+
+## 10. Связь с другими документами
 
 - [TRAINING.md](TRAINING.md) – описание метрик и их интерпретация.
 - [PIPELINE.md](PIPELINE.md) – как запустить обучение и получить CSV.
-- [CHANGES.md](CHANGES.md) – история изменений, включая добавление колонок в логи.
+- [CHANGES.md](CHANGES.md) – история изменений, включая рефакторинг `plot_metrics.py`.
+- [CONFIG.md](CONFIG.md) – описание параметров конфигурации графиков.
 
 ---
 
 **Дата последнего обновления:** 2026-06-07  
-**Версия:** 2.0 (полное соответствие текущей структуре логов)
+**Версия:** 2.0 (поддержка подстановки {name}, модульная структура, учёт новых колонок)

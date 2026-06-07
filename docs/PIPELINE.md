@@ -11,7 +11,7 @@
 **Команда:**
 
 ```bash
-python prepare_dataset.py -opt options/training/your_config.yml --clean-dataset
+python prepare_dataset.py -opt configs/your_config.yml --clean-dataset
 ```
 
 - `--clean-dataset` – полностью удаляет старые папки `train/` и `test/` внутри `dataset_root` и генерирует датасет заново.
@@ -37,7 +37,7 @@ python prepare_dataset.py -opt options/training/your_config.yml --clean-dataset
 **Команда:**
 
 ```bash
-python run_pipeline.py -opt options/training/your_config.yml
+python run_pipeline.py -opt configs/your_config.yml
 ```
 
 **Этапы:**
@@ -56,7 +56,7 @@ python run_pipeline.py -opt options/training/your_config.yml
 **Команда:**
 
 ```bash
-python run_training.py -opt options/training/your_config.yml
+python run_training.py -opt configs/your_config.yml
 ```
 
 **Ключевые особенности:**
@@ -66,14 +66,14 @@ python run_training.py -opt options/training/your_config.yml
 - **Валидация** – после каждой эпохи (или с частотой `validation_freq`) запускается валидация на тестовой выборке: вычисляются SSIM и PSNR, сохраняются предсказания в `experiments/{name}/val_predictions/`.
 - **Логирование** – метрики пишутся в:
   - `train_metrics.csv` – шаг, loss, psnr, lr, delta_psnr, grad_var, tv_ratio, VRAM, l1_loss, ffl_loss.
-  - `val_metrics.csv` – эпоха, ssim, psnr.
+  - `val_metrics.csv` – эпоха, psnr, ssim.
   - `train_progress.log` – текстовый лог с выбранными полями.
   - TensorBoard (опционально, если `logger.use_tb_logger: true`).
 - **Сохранение чекпоинтов** – каждые `save_checkpoint_epoch` эпох. При аварийном завершении (Ctrl+C) сохраняется флаг `is_emergency`, что позволяет продолжить с точного места.
 
 **Пример ожидаемого вывода в консоли:**
 ```
-[RAW-NAFNet-Final-100] Epoch 0/300 Batch 10/250 Loss: 0.12345 PSNR: 22.34 dB VRAM: 4.52GB
+[NAFNet-100-02] Epoch 0/300 Batch 10/250 Loss: 0.12345 PSNR: 22.34 dB VRAM: 4.52GB
 ...
 📊 [Валидация] Итог эпохи 0 — Средний PSNR: 23.10 dB, Средний SSIM: 0.8542
 ```
@@ -87,7 +87,7 @@ python run_training.py -opt options/training/your_config.yml
 **Команда:**
 
 ```bash
-python evaluate_baseline.py -opt options/training/your_config.yml
+python evaluate_baseline.py -opt configs/your_config.yml
 ```
 
 **Результат:** в логе появятся строки вида:
@@ -108,7 +108,7 @@ MHC       -> Mean PSNR = 36.22 dB, Mean SSIM = 0.9720
 **Команда:**
 
 ```bash
-python plot_metrics.py -opt options/training/plot_metrics.yml
+python plot_metrics.py -opt options/plot/your_plot_config.yml
 ```
 
 **Что можно построить:**
@@ -117,9 +117,32 @@ python plot_metrics.py -opt options/training/plot_metrics.yml
 - График learning rate (lr vs step)
 - Сравнение PSNR модели с baseline (линия сравнения)
 - SSIM на валидации (epoch vs ssim)
+- PSNR на валидации (epoch vs psnr)
 - Дополнительные метрики (delta_psnr, grad_var, tv_ratio)
 
 Все графики сохраняются в папку, указанную в `output_dir` (например, `experiments/{name}/figures/`).
+
+**Пример конфигурации графиков (`plot_metrics.yml`):**
+```yaml
+name: NAFNet-100-02
+experiment_dir: "experiments/{name}"
+output_dir: "experiments/{name}/figures"
+data_files:
+  train_metrics: "experiments/{name}/train_metrics.csv"
+  val_metrics: "experiments/{name}/val_metrics.csv"
+
+plots:
+  - type: line
+    title: "Кривая потерь"
+    data:
+      source: csv
+      file_ref: train_metrics
+      x: step
+      y: loss
+    smoothing: 0.9
+    save: loss_curve.png
+  ...
+```
 
 ---
 
@@ -130,7 +153,7 @@ python plot_metrics.py -opt options/training/plot_metrics.yml
 **Команда:**
 
 ```bash
-python process_video.py --input input.mp4 --output output.mp4 --config options/training/your_config.yml --checkpoint experiments/RAW-NAFNet-Final-100/checkpoints/resume_nef_nafnet_100.pth
+python process_video.py --input input.mp4 --output output.mp4 --config configs/your_config.yml --checkpoint experiments/NAFNet-100-02/checkpoints/resume.pth
 ```
 
 - Каждый кадр обрабатывается через ту же функцию деградации (опционально) и затем через модель.
@@ -159,18 +182,34 @@ python process_video.py --input input.mp4 --output output.mp4 --config options/t
 - **Предобученные веса:**  
   Если указан `path.pretrain_network_g`, модель попытается загрузить веса из SIDD-модели NAFNet. Несовместимые слои (входной/выходной) будут проигнорированы, внутренние слои перенесены.
 
+- **Подстановка `{name}`:**  
+  Во всех путях (кроме `source_images_dir`, если не указано иное) можно использовать `{name}` – он заменится на значение `name` из конфига. Это позволяет легко копировать конфиги для разных экспериментов.
+
 ---
 
 ## 8. Типичный порядок работы (краткий чек-лист)
 
 1. **Подготовить исходные изображения** – положить их в папку, указанную в `source_images_dir`.
-2. **Настроить конфиг** (`your_config.yml`) – задать пути, параметры деградации, размеры патчей, гиперпараметры обучения.
+2. **Настроить конфиг** (`your_config.yml`) – задать пути, параметры деградации, размеры патчей, гиперпараметры обучения. Убедиться в согласованности `downscale_factor` и `upscale_factor`.
 3. **Сгенерировать датасет** – `prepare_dataset.py -opt your_config.yml --clean-dataset`.
 4. **(Опционально) Визуально проверить** – `run_pipeline.py -opt your_config.yml`.
 5. **Запустить обучение** – `run_training.py -opt your_config.yml`.
 6. **Оценить baseline** – `evaluate_baseline.py -opt your_config.yml`.
 7. **Построить графики** – `plot_metrics.py -opt plot_metrics.yml`.
 8. **Применить модель к видео** – `process_video.py ...`.
+
+---
+
+## 9. Устранение неполадок
+
+| Проблема | Решение |
+|----------|---------|
+| `ModuleNotFoundError` при запуске | Убедитесь, что вы находитесь в корневой директории проекта. Скрипты добавляют `sys.path.insert(0, str(Path(__file__).parent))`, но если вы запускаете из другого места, могут быть проблемы. |
+| `AssertionError: gt_size != upscale_factor * lq_size` | Проверьте конфиг: `lq_size` должен быть `gt_size // upscale_factor`. |
+| Out of Memory (OOM) | Уменьшите `batch_size_per_gpu` или `network_g.width`. Новая архитектура потребляет мало памяти, но `width=64` и `gt_size=512` могут требовать ~6–8 ГБ при `batch_size=2`. |
+| Валидационный PSNR не пишется в CSV | Убедитесь, что в `run_training.py` вызов `train_logger.log_validation_metrics` содержит три аргумента: `(epoch, epoch_ssim, epoch_psnr)`. |
+| Графики не строятся из-за отсутствия `pd` | Добавьте `import pandas as pd` в `plot_metrics.py` (если ещё нет). |
+| `{name}` не заменяется в путях | Проверьте, что в конфиге указано `name: ...` и что в `config.py` и `plot_metrics.py` есть подстановка (она уже реализована). |
 
 ---
 

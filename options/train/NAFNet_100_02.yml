@@ -1,0 +1,98 @@
+name: NAFNet-100-02       # Название эксперимента и папки в experiments/
+manual_seed: 42           # Фиксация случайных чисел
+
+path:
+  source_images_dir: "/home/grand/Images/NEF_Test_100"  # 100 кадров-доноров
+  dataset_root: "datasets/{name}"              # Корневая папка датасета
+  resume_path: "experiments/{name}/checkpoints/resume_nef_nafnet.pth"
+
+# Секция для скрипта генерации графиков plot_metrics.py
+experiment_dir: "experiments/{name}"
+output_dir: "experiments/{name}/figures"
+
+data_files:
+  train_metrics: "experiments/{name}/train_metrics.csv"
+  val_metrics: "experiments/{name}/val_metrics.csv"
+
+datasets:
+  train:
+    gt_size: 512                 # Размер HQ-патча
+    lq_size: 128                 # = gt_size // upscale_factor (512 // 4)
+    batch_size_per_gpu: 2
+    num_worker_per_gpu: 2
+    use_flip: true               # Безопасная аугментация (отражения)
+    auto_resume: true
+
+# === ФИЗИЧЕСКАЯ ДЕГРАДАЦИЯ СИГНАЛА ===
+process_data:
+  downscale_factor: 2            # Оптическое уменьшение (общее сжатие = downscale_factor * 2 = 4)
+  noise:
+    add: true
+    snr_db: 20
+    correlated: true
+    psf_sigma: 0.5
+
+logger:
+  use_tb_logger: true
+  log_csv: true
+  csv_file_name: "train_metrics.csv"
+  log_file_name: "train_progress.log"
+  file_log_freq: 50
+
+  include_in_console:
+    loss: true
+    psnr: true
+    vram: true
+    learning_rate: true
+
+  include_in_file_log:
+    loss: true
+    psnr: true
+    learning_rate: true
+    delta_psnr: true
+    grad_variance: true
+    tv_ratio: true
+    vram_usage: true
+    log_ssim: true
+
+visuals_logger:
+  output_dir: "experiments/{name}/debug_visuals"
+  lq_preview_name: "debug_lq_preview.png"
+  gt_reference_name: "debug_gt_reference.png"
+
+pipeline_logger:
+  log_file: "experiments/{name}/pipeline.log"
+
+network_g:
+  num_in_ch: 4
+  num_out_ch: 3
+  width: 64
+  upscale_factor: 4              # Единый источник истины: масштаб восстановления (должен = downscale_factor * 2)
+  middle_blk_num: 12
+  enc_blk_nums: [2, 2, 4, 8]
+  dec_blk_nums: [2, 2, 2, 2]
+
+train:
+  validation_freq: 1
+  save_checkpoint_epoch: 10
+  num_epochs: 5000
+
+  optim_g:
+    type: AdamW
+    lr: 1e-4
+    weight_decay: 1e-4
+    betas: [0.9, 0.999]
+
+  scheduler:
+    type: MultiStepLR
+    milestones: [150, 225]
+    gamma: 0.1
+
+losses:
+  type: "combined"
+  l1_weight: 1.5
+  ffl_weight: 0.2
+  ffl_start_epoch: 20           # 🎯 СТАЛО: Новая веха автоматического включения FFL
+  ffl_alpha: 1.5
+  ffl_log_factor: 100.0
+  ffl_type: "log"

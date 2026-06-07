@@ -6,10 +6,10 @@
 
 ## Секция `name`
 
-Обязательный параметр. Имя эксперимента. Используется для создания подпапки в `experiments/` и для подстановки `{name}` в пути (например, `resume_path`).
+Обязательный параметр. Имя эксперимента. Используется для создания подпапки в `experiments/` и для подстановки `{name}` в пути (см. раздел о подстановке).
 
 ```yaml
-name: RAW-NAFNet-Final-100
+name: NAFNet-100-02
 ```
 
 ---
@@ -31,15 +31,15 @@ manual_seed: 42
 | Параметр | Описание | Пример |
 |----------|----------|--------|
 | `source_images_dir` | Папка с исходными резкими RGB‑изображениями (NEF, PNG, JPEG и др.) | `"/home/user/Images/NEF_100"` |
-| `dataset_root` | Корневая папка, где будут созданы `train/` и `test/` с подпапками `lq_inputs`/`hq_targets` | `"datasets/nef_nafnet_100"` |
+| `dataset_root` | Корневая папка, где будут созданы `train/` и `test/` с подпапками `lq_inputs`/`hq_targets` | `"datasets/{name}"` |
 | `resume_path` | Путь для сохранения/загрузки чекпоинта. Может содержать `{name}`. | `"experiments/{name}/checkpoints/resume.pth"` |
 | `pretrain_network_g` (опционально) | Путь к предобученной модели NAFNet (например, SIDD). | `"pretrained/NAFNet-SIDD-width32.pth"` |
 
 ```yaml
 path:
   source_images_dir: "/home/grand/Images/NEF_Test_100"
-  dataset_root: "datasets/nef_nafnet_100"
-  resume_path: "experiments/{name}/checkpoints/resume_nef_nafnet_100.pth"
+  dataset_root: "datasets/{name}"
+  resume_path: "experiments/{name}/checkpoints/resume.pth"
   pretrain_network_g: "pretrained/NAFNet-SIDD-width32.pth"   # опционально
 ```
 
@@ -263,11 +263,48 @@ pipeline_logger:
 
 ---
 
+## Секции для `plot_metrics.py` (опциональны)
+
+Эти секции используются только скриптом построения графиков и не влияют на обучение.
+
+| Параметр | Описание |
+|----------|----------|
+| `experiment_dir` | Папка эксперимента (где лежат `train_metrics.csv`, `val_metrics.csv`) |
+| `output_dir` | Папка для сохранения графиков |
+| `data_files` | Словарь с путями к CSV-файлам (по ключам) |
+| `plots` | Список графиков (тип, источник, колонки, сглаживание и т.д.) |
+
+```yaml
+experiment_dir: "experiments/{name}"
+output_dir: "experiments/{name}/figures"
+data_files:
+  train_metrics: "experiments/{name}/train_metrics.csv"
+  val_metrics: "experiments/{name}/val_metrics.csv"
+```
+
+---
+
+## Подстановка `{name}`
+
+Во всех путях, перечисленных выше (кроме `source_images_dir`, если не указано иное), можно использовать шаблон `{name}`. При загрузке конфига он будет автоматически заменён на значение `name`. Это позволяет создавать переносимые конфиги и не дублировать имя эксперимента.
+
+**Поддерживается в:**
+- `path.dataset_root`
+- `path.resume_path`
+- `visuals_logger.output_dir`
+- `pipeline_logger.log_file`
+- `experiment_dir`
+- `output_dir`
+- `data_files.*`
+- `plot_metrics.py` (через аргумент `--name` или поле `name` в YAML)
+
+---
+
 ## Дополнительные примечания
 
 1. **Обязательные параметры**  
    - `network_g.upscale_factor` – проверяется в `config.py`. При отсутствии выбрасывается исключение.
-   - `name` – используется для подстановки в пути.
+   - `name` – используется для подстановки, но может быть пустым (тогда подстановка не выполняется).
 
 2. **Устаревшие параметры (игнорируются)**  
    - `datasets.train.upscale_factor` – при наличии выводится предупреждение.
@@ -279,16 +316,13 @@ pipeline_logger:
 4. **Типы данных**  
    - `!!float` – явное указание числа с плавающей точкой (например, `lr: !!float 1e-4`).
 
-5. **Подстановка `{name}`**  
-   Поддерживается в `output_dir`, `log_file`, `resume_path`, `csv_file_name`, `log_file_name`.
-
 ---
 
 ## Пример полного конфигурационного файла
 
-См. `configs/RAW_NAFNet_Final_100.yml`.
+См. `configs/RAW_NAFNet_Final_100.yml` или `configs/NAFNet-100-02.yml`.
 
 ---
 
 **Дата последнего обновления:** 2026-06-07  
-**Версия:** 2.0 (соответствует коду после рефакторинга)
+**Версия:** 3.0 (соответствует коду после рефакторинга)

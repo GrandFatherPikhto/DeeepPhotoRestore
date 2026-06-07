@@ -1,6 +1,6 @@
 # TRAINING.md – Руководство по обучению модели JDSR
 
-Этот документ подробно описывает процесс обучения нейросетевой модели совместной демозаики и суперразрешения (Joint Demosaicing and Super‑Resolution) на основе адаптированной архитектуры NAFNet. Здесь приведены гиперпараметры, схемы обучения, механизмы мониторинга и восстановления, а также интерпретация типичных метрик.
+Этот документ описывает процесс обучения нейросетевой модели совместной демозаики и суперразрешения (Joint Demosaicing and Super‑Resolution) на основе адаптированной архитектуры NAFNet. Здесь приведены гиперпараметры, схема обучения, механизмы мониторинга и восстановления, а также интерпретация типичных метрик.
 
 ---
 
@@ -9,7 +9,7 @@
 Обучение управляется скриптом `run_training.py` и конфигурационным YAML‑файлом. Основные этапы каждой эпохи:
 
 - Загрузка батча пар (LQ, HQ) из датасета `CustomNEFPairDataset`.
-- Прямой проход через обёртку `NAFNetDemosaicSuperResolutionWrapper`.
+- Прямой проход через обёртку `NAFNetDemosaicSuperResolutionWrapper` (NAFNet работает в низком разрешении, PixelShuffle после сети).
 - Расчёт комбинированной потери: `total_loss = l1_weight * L1 + ffl_weight * FFL` (с возможным прогревочным отключением FFL).
 - Обратное распространение, клиппинг градиентов (`max_norm=1.0`), шаг оптимизатора.
 - Логирование метрик (loss, PSNR, learning rate, дополнительные показатели).
@@ -18,6 +18,8 @@
 ---
 
 ## 2. Гиперпараметры обучения (рекомендованные)
+
+После рефакторинга (NAFNet в низком разрешении, исправленная обёртка) рекомендуется использовать следующие настройки:
 
 | Параметр | Значение (пример) | Где задаётся | Пояснение |
 |----------|------------------|--------------|-----------|
@@ -28,17 +30,20 @@
 | `scheduler.type` | `MultiStepLR` | `train.scheduler` | Тип планировщика |
 | `scheduler.milestones` | `[150, 225]` | `train.scheduler` | Эпохи снижения LR |
 | `scheduler.gamma` | `0.1` | `train.scheduler` | Коэффициент уменьшения LR |
-| `losses.l1_weight` | `1.5` | `losses` | Вес L1‑компоненты |
-| `losses.ffl_weight` | `0.2` | `losses` | Вес FFL‑компоненты |
-| `losses.ffl_start_epoch` | `20` | `losses` | Эпоха активации FFL |
+| `losses.l1_weight` | `1.0` | `losses` | Вес L1‑компоненты (можно снизить) |
+| `losses.ffl_weight` | `0.5…0.8` | `losses` | Вес FFL‑компоненты (увеличен для борьбы с муаром) |
+| `losses.ffl_start_epoch` | `50` | `losses` | Эпоха активации FFL (прогрев) |
 | `losses.ffl_type` | `log` | `losses` | Логарифмическая версия FFL |
 | `train.num_epochs` | `300` | `train` | Общее число эпох |
 | `train.validation_freq` | `1` | `train` | Частота валидации (эпохи) |
 | `train.save_checkpoint_epoch` | `10` | `train` | Частота сохранения чекпоинта |
-| `datasets.train.batch_size_per_gpu` | `2` (при gt_size=512) | `datasets.train` | Размер батча |
+| `datasets.train.batch_size_per_gpu` | `2` (при gt_size=512, width=64) | `datasets.train` | Размер батча |
 | `datasets.train.gt_size` | `512` | `datasets.train` | Размер HQ‑патча |
 | `datasets.train.lq_size` | `128` | `datasets.train` | Размер LQ‑патча (должен быть `gt_size / upscale_factor`) |
+| `network_g.width` | `64` | `network_g` | Ширина каналов (увеличена для лучшего качества) |
 | `logger.file_log_freq` | `50` | `logger` | Частота записи в текстовый лог (шаги) |
+
+**Примечание:** Параметры `downscale_factor` (в `process_data`) и `upscale_factor` (в `network_g`) должны быть согласованы: `upscale_factor = downscale_factor × 2`.
 
 ---
 
@@ -47,13 +52,13 @@
 ### 3.1. Во время обучения (в консоли и train_progress.log)
 
 - **Loss** – комбинированная потеря (L1 + FFL). Должна монотонно убывать. Резкие скачки могут указывать на нестабильность (сработал клиппинг градиентов или большой шум в батче).
-- **PSNR** – пиковое отношение сигнал/шум на обучающей выборке (расчитывается по батчу). Для необученной модели может быть низким (15–20 дБ), к концу обучения (200–300 эпох) достигает 30–38 дБ в зависимости от сложности деградации.
+- **PSNR** – пиковое отношение сигнал/шум на обучающей выборке (рассчитывается по батчу). Для необученной модели может быть низким (15–20 дБ), к концу обучения (200–300 эпох) достигает 30–38 дБ в зависимости от сложности деградации.
 - **Learning rate** – отображает текущую скорость. При `MultiStepLR` ступенчато падает в 10 раз в моменты `milestones`.
 - **VRAM** – использование памяти GPU (полезно для подбора размера батча).
 
 **Пример консольной строки:**
 ```
-[RAW-NAFNet-Final-100] Epoch 42/300 Batch 100/245 Loss: 0.02345 PSNR: 31.24 dB VRAM: 4.12GB
+[NAFNet-100-02] Epoch 42/300 Batch 100/245 Loss: 0.02345 PSNR: 31.24 dB VRAM: 4.12GB
 ```
 
 ### 3.2. Валидационные метрики (val_metrics.csv)
@@ -63,9 +68,9 @@
 
 **Запись в CSV:**
 ```
-epoch,ssim,psnr
-0,0.8542,23.10
-1,0.8721,24.56
+epoch,psnr,ssim
+0,23.10,0.8542
+1,24.56,0.8721
 ...
 ```
 
@@ -108,7 +113,8 @@ FFL может вызывать градиентные всплески на р�
 ### 6.2. Остаточный паттерн Байера после 100 эпох
 
 - Скорее всего, нарушена геометрия: `gt_size != upscale_factor * lq_size`. Проверьте assert в датасете.
-- Также возможна проблема с `downscale_factor` – если он не согласован с `upscale_factor` (должно быть `upscale_factor = downscale_factor * 2`).
+- Также возможна проблема с масштабированием: `upscale_factor` должен быть `downscale_factor × 2`.
+- Увеличьте `ffl_weight` до 0.5…0.8 и `ffl_start_epoch` до 50.
 
 ### 6.3. Потеря цвета (фиолетовый оттенок)
 
@@ -121,9 +127,14 @@ FFL может вызывать градиентные всплески на р�
 - Или слишком большой `lr` – попробуйте уменьшить в 10 раз.
 - Также может помочь `clip_grad_norm_` (уже внедрён).
 
-### 6.5. Низкая утилизация GPU
+### 6.5. Out of Memory (OOM) после рефакторинга
 
-- Увеличьте `batch_size_per_gpu` (следите за VRAM).
+- Новая архитектура (NAFNet в низком разрешении) потребляет **в 16 раз меньше памяти**, чем старая. Если вы всё ещё сталкиваетесь с OOM, уменьшите `batch_size_per_gpu` до 1 или 2.
+- Убедитесь, что `network_g.width` не установлен чрезмерно большим (например, 128 может быть избыточно для 12 ГБ).
+
+### 6.6. Низкая утилизация GPU
+
+- Увеличьте `batch_size_per_gpu` (если позволяет память).
 - Увеличьте `num_worker_per_gpu` (например, до 4–8).
 - Уменьшите частоту логирования в файл (`file_log_freq` установите в 50 или выше).
 
@@ -133,22 +144,22 @@ FFL может вызывать градиентные всплески на р�
 
 ```bash
 # генерация датасета (один раз)
-python prepare_dataset.py -opt configs/RAW_NAFNet_Final_100.yml --clean-dataset
+python prepare_dataset.py -opt configs/NAFNet-100-02.yml --clean-dataset
 
 # запуск обучения
-python run_training.py -opt configs/RAW_NAFNet_Final_100.yml
+python run_training.py -opt configs/NAFNet-100-02.yml
 
 # в другом терминале можно следить за последними строками лога:
-tail -f experiments/RAW-NAFNet-Final-100/train_progress.log
+tail -f experiments/NAFNet-100-02/train_progress.log
 
 # или смотреть CSV в реальном времени:
-watch -n 5 'tail -n 3 experiments/RAW-NAFNet-Final-100/train_metrics.csv'
+watch -n 5 'tail -n 3 experiments/NAFNet-100-02/train_metrics.csv'
 ```
 
 После завершения обучения (или по его ходу) можно строить графики:
 
 ```bash
-python plot_metrics.py -opt configs/plot_metrics.yml
+python plot_metrics.py -opt options/plot/NAFNet-100-02.yml
 ```
 
 ---
@@ -156,7 +167,7 @@ python plot_metrics.py -opt configs/plot_metrics.yml
 ## 8. Часто задаваемые вопросы (FAQ)
 
 **Q: Как изменить коэффициент масштабирования?**  
-A: Задайте `downscale_factor` в секции `process_data` (например, 2) и `upscale_factor` в `network_g` (должен быть `downscale_factor * 2`). Затем перегенерируйте датасет с `--clean-dataset` и убедитесь, что `gt_size` и `lq_size` согласованы.
+A: Задайте `downscale_factor` в секции `process_data` (например, 2) и `upscale_factor` в `network_g` (должен быть `downscale_factor × 2`). Затем перегенерируйте датасет с `--clean-dataset` и убедитесь, что `gt_size` и `lq_size` согласованы.
 
 **Q: Можно ли продолжить обучение после изменения конфига (например, количества эпох)?**  
 A: Да, если чекпоинт совместим (те же размеры патчей, та же архитектура). Просто измените `num_epochs` в конфиге и запустите `run_training.py` – он загрузит последний чекпоинт и продолжит до новой максимальной эпохи.
@@ -167,6 +178,25 @@ A: В `training_logger.py` в метод `log_metrics` добавьте новы
 **Q: Почему валидация считается по центральному кропу, а не по всему изображению?**  
 A: Для единообразия с тренировочными кропами и чтобы избежать краевых эффектов. Центральный кроп является наиболее репрезентативным.
 
+**Q: Как проверить, что датасет сгенерирован с правильным масштабом?**  
+A: Выполните скрипт:
+```python
+python -c "
+from libraries.training_dataset_nef import CustomNEFPairDataset
+from libraries.config import get_pipeline_config
+opt = get_pipeline_config()
+ds = CustomNEFPairDataset(
+    opt['path']['dataset_root'] + '/train/lq_inputs',
+    opt['path']['dataset_root'] + '/train/hq_targets',
+    opt=opt
+)
+lq, hq = ds[0]
+print(f'LQ shape: {lq.shape}')   # (4, lq_size, lq_size)
+print(f'HQ shape: {hq.shape}')   # (3, gt_size, gt_size)
+assert hq.shape[1] == opt['network_g']['upscale_factor'] * lq.shape[1]
+"
+```
+
 ---
 
 ## 9. Ссылки на смежные документы
@@ -174,9 +204,10 @@ A: Для единообразия с тренировочными кропам�
 - [ALGORITHM.md](ALGORITHM.md) – описание алгоритмов (демозаика, FFL, деградация).
 - [ARCHITECTURE.md](ARCHITECTURE.md) – структура кода и потоки данных.
 - [PIPELINE.md](PIPELINE.md) – пошаговые инструкции по запуску.
+- [CONFIG.md](CONFIG.md) – описание параметров YAML.
 - [UPDOWN_SCALE.md](UPDOWN_SCALE.md) – детальное объяснение масштабирования.
 
 ---
 
 **Дата последнего обновления:** 2026-06-07  
-**Версия:** 2.0
+**Версия:** 2.0 (соответствует новой архитектуре с PixelShuffle после NAFNet)

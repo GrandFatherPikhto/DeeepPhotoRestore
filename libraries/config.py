@@ -61,9 +61,27 @@ def get_pipeline_config():
         vis_cfg = config.get('visuals_logger', {})
         if 'output_dir' in vis_cfg:
             vis_cfg['output_dir'] = vis_cfg['output_dir'].replace('{name}', exp_name)
+        
         log_cfg = config.get('pipeline_logger', {})
         if 'log_file' in log_cfg:
             log_cfg['log_file'] = log_cfg['log_file'].replace('{name}', exp_name)
+        if 'experiment_dir' in config:
+            config['experiment_dir'] = config['experiment_dir'].replace('{name}', exp_name)
+        if 'output_dir' in config:
+            config['output_dir'] = config['output_dir'].replace('{name}', exp_name)
+        
+        path_cfg = config.get('path', {})
+        if 'dataset_root' in path_cfg:
+            path_cfg['dataset_root'] = path_cfg['dataset_root'].replace('{name}', exp_name)
+        if 'source_images_dir' in path_cfg:
+            path_cfg['source_images_dir'] = path_cfg['source_images_dir'].replace('{name}', exp_name)
+        if 'resume_path' in path_cfg:
+            path_cfg['resume_path'] = path_cfg['resume_path'].replace('{name}', exp_name)
+
+        if 'data_files' in config:
+            for k, v in config['data_files'].items():
+                if isinstance(v, str):
+                    config['data_files'][k] = v.replace('{name}', exp_name)            
     
     resume_cfg = config.get('path', {})
     if 'resume_path' in resume_cfg:

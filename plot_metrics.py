@@ -2,88 +2,28 @@
 # -*- coding: utf-8 -*-
 
 import os
-import sys
-import re
 import argparse
 import yaml
-import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-def smooth_exponential(data, alpha):
-    if alpha >= 1.0:
-        return data
-    smoothed = np.zeros_like(data)
-    smoothed[0] = data[0]
-    for i in range(1, len(data)):
-        smoothed[i] = alpha * data[i] + (1 - alpha) * smoothed[i-1]
-    return smoothed
-
-def load_csv_data(filepath, x_col, y_col, smoothing=1.0):
-    df = pd.read_csv(filepath)
-    x = df[x_col].values
-    y = df[y_col].values
-    if smoothing < 1.0:
-        y = smooth_exponential(y, smoothing)
-    mask = ~np.isnan(y)
-    return x[mask], y[mask]
-
-def load_log_data(filepath, pattern, smoothing=1.0):
-    values = []
-    with open(filepath, 'r') as f:
-        for line in f:
-            match = re.search(pattern, line)
-            if match:
-                values.append(float(match.group(1)))
-    if not values:
-        raise ValueError(f"Не найдено значений по паттерну {pattern} в {filepath}")
-    x = np.arange(1, len(values)+1)
-    y = np.array(values)
-    if smoothing < 1.0:
-        y = smooth_exponential(y, smoothing)
-    return x, y
-
-def plot_line(ax, x, y, title, xlabel, ylabel, y_lim=None, y_scale='linear', color=None):
-    ax.plot(x, y, color=color or 'blue', linewidth=1.5)
-    ax.set_title(title)
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
-    if y_lim:
-        ax.set_ylim(y_lim)
-    if y_scale == 'log':
-        ax.set_yscale('log')
-    ax.grid(True, linestyle='--', alpha=0.5)
-
-def plot_comparison(ax, x, y, baseline_value, baseline_label, title, xlabel, ylabel, y_lim=None):
-    ax.plot(x, y, color='blue', linewidth=1.5, label='NAFNet')
-    ax.axhline(y=baseline_value, color='red', linestyle='--', linewidth=1.5, label=baseline_label)
-    ax.set_title(title)
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
-    if y_lim:
-        ax.set_ylim(y_lim)
-    ax.grid(True, linestyle='--', alpha=0.5)
-    ax.legend()
-
-def plot_multi_line(ax, x, y_dict, title, xlabel, ylabel, y_scale='linear', legend=None):
-    for i, (key, yvals) in enumerate(y_dict.items()):
-        ax.plot(x, yvals, linewidth=1.5, label=legend[i] if legend else key)
-    ax.set_title(title)
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
-    if y_scale == 'log':
-        ax.set_yscale('log')
-    ax.grid(True, linestyle='--', alpha=0.5)
-    if legend or len(y_dict) > 1:
-        ax.legend()
+from libraries.plot_utils import (
+    smooth_exponential, load_csv_data, load_log_data, substitute_name
+)
+from libraries.plot_functions import plot_line, plot_comparison, plot_multi_line
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-opt', required=True, help='Путь к YAML конфигурации графиков')
+    parser.add_argument('--name', type=str, default=None, help='Имя эксперимента (переопределяет {name})')
     args = parser.parse_args()
 
     with open(args.opt, 'r', encoding='utf-8') as f:
         cfg = yaml.safe_load(f)
+
+    exp_name = args.name if args.name is not None else cfg.get('name', '')
+    if exp_name:
+        cfg = substitute_name(cfg, exp_name)
 
     exp_dir = cfg['experiment_dir']
     out_dir = cfg.get('output_dir', os.path.join(exp_dir, 'figures'))
@@ -98,7 +38,6 @@ def main():
 
         # Определяем путь к файлу
         if source == 'val_csv':
-            # Автоматически ищем val_metrics.csv в папке эксперимента
             filepath_abs = os.path.join(exp_dir, 'val_metrics.csv')
             if not os.path.exists(filepath_abs):
                 print(f"Пропуск {plot_cfg.get('save')}: файл {filepath_abs} не найден")
@@ -122,7 +61,7 @@ def main():
             continue
 
         try:
-            if source == 'csv' or source == 'val_csv':
+            if source in ('csv', 'val_csv'):
                 if plot_type == 'multi_line':
                     df = pd.read_csv(filepath_abs)
                     x_col = data_cfg['x']

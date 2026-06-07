@@ -2,14 +2,14 @@
 # Инференс предобученной модели NAFNet-SIDD-width32
 # ==============================================================================
 
-name: "Pretrained_SIDD32_20"          # имя эксперимента (используется в логах)
+name: "Pretrained_SIDD32_Final_100"          # имя эксперимента (используется в логах)
 manual_seed: 42
 
 # --- ПУТИ ---
 paths:
-  input_tiff: "datasets/nef_nafnet_20/test/lq_inputs/DSC_0415_bayer.tiff"
-  gt_png: "datasets/nef_nafnet_20/test/hq_targets/DSC_0415.png"   # эталон (опционально)
-  output_dir: "experiments/pretrained/SIDD32_20/results"
+  input_tiff: "datasets/nef_nafnet_100/test/lq_inputs/DSC_0573_bayer.tiff"
+  gt_png: "datasets/nef_nafnet_100/test/hq_targets/DSC_0573.png"   # эталон (опционально)
+  output_dir: "experiments/pretrained_final_100/SIDD32_20/results"
   checkpoint: "pretrained/NAFNet-SIDD-width32.pth"
 
 # --- АРХИТЕКТУРА СЕТИ (должна совпадать с загружаемой моделью) ---
