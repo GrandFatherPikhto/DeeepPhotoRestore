@@ -1,0 +1,100 @@
+# Главная проблема: слишком агрессивный FFL включён слишком рано и с малым весом, плюс шум 20 dB убивает высокие частоты.
+# Пункты отмеченные ⬅️ изменены после 200й эпохи
+#
+name: NAFNet-200-01          # новое имя, чтобы не путать
+manual_seed: 42
+
+path:
+  source_images_dir: "/home/grand/Images/NEF_Test_200"
+  dataset_root: "datasets/{name}"
+  resume_path: "experiments/{name}/checkpoints/resume.pth"
+
+experiment_dir: "experiments/{name}"
+output_dir: "experiments/{name}/figures"
+
+data_files:
+  train_metrics: "experiments/{name}/train_metrics.csv"
+  val_metrics: "experiments/{name}/val_metrics.csv"
+
+datasets:
+  train:
+    gt_size: 512
+    lq_size: 128
+    batch_size_per_gpu: 2          # оставляем 2, память
+    num_worker_per_gpu: 2
+    use_flip: true
+    auto_resume: true
+
+process_data:
+  downscale_factor: 2              # оставляем по ТЗ
+  noise:
+    add: false                     # ⚠️ ВРЕМЕННО ОТКЛЮЧАЕМ ШУМ – чистая демозаика
+    snr_db: 20                     # не используется
+    correlated: false
+    psf_sigma: 0.5
+
+logger:
+  use_tb_logger: true
+  log_csv: true
+  csv_file_name: "train_metrics.csv"
+  log_file_name: "train_progress.log"
+  file_log_freq: 50
+  include_in_console:
+    loss: true
+    psnr: true
+    vram: true
+    learning_rate: true
+  include_in_file_log:
+    loss: true
+    psnr: true
+    learning_rate: true
+    delta_psnr: true
+    grad_variance: true
+    tv_ratio: true
+    vram_usage: true
+    log_ssim: true
+
+visuals_logger:
+  output_dir: "experiments/{name}/debug_visuals"
+  lq_preview_name: "debug_lq_preview.png"
+  gt_reference_name: "debug_gt_reference.png"
+
+pipeline_logger:
+  log_file: "experiments/{name}/pipeline.log"
+
+network_g:
+  num_in_ch: 4
+  num_out_ch: 3
+  width: 64                        # оставляем
+  upscale_factor: 4
+  middle_blk_num: 12
+  enc_blk_nums: [2, 2, 4, 8]
+  dec_blk_nums: [2, 2, 2, 2]
+
+train:
+  validation_freq: 1
+  save_checkpoint_epoch: 10
+  num_epochs: 1000                 # достаточно 1000, не 5000
+  optim_g:
+    type: AdamW
+    # lr: 5e5 # ⬅️ повышаем LR (было 1e-4, но упало до 1e-6)
+    lr: 1e-4                       # стандартный старт
+    weight_decay: 1e-4
+    betas: [0.9, 0.999]
+  scheduler:
+    type: CosineAnnealingLR        # 🎯 плавное снижение без ступенек, меньше стресса
+    T_max: 1000
+    # T_max: 600          # ⬅️ повышаем LR (было 1e-4, но упало до 1e-6)
+    eta_min: 1e-7
+
+losses:
+  type: "combined"
+  # l1_weight: 0.8                  # ⬅️ чуть уменьшаем, чтобы FFL получил больше влияния
+  l1_weight: 1.0                   # снижаем L1
+  ffl_weight: 0.8                  # 🎯 увеличиваем вес FFL для борьбы с высокими частотами
+  ffl_start_epoch: 100             # 🎯 даём 100 эпох прогрева только на L1
+  # ffl_weight: 1.2                # ⬅️ увеличиваем вес FFL (было 0.8)
+  # ffl_start_epoch: 0             # ⬅️ включаем FFL сразу (сеть уже прогрета)  
+  ffl_alpha: 1.5
+  ffl_log_factor: 100.0
+  ffl_type: "log"
