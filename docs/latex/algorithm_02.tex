@@ -1,0 +1,142 @@
+\documentclass[12pt,a4paper,oneside]{article}
+
+\input{preamble.tex}
+
+\begin{document}
+
+\section{Методология и полная схема численного эксперимента}
+
+Для верификации разработанных методов реставрации оптического сигнала в режиме совмещенной демозаики и суперразрешения (\textit{Joint Demosaicing and Super-Resolution — JDSR}) был реализован сквозной автоматизированный комплекс вычислительной фотографии. Архитектурный каркас системы переведен из абстрактного пространственного масштабирования «размер-в-размер» в латентное пространство подканалов сенсора с соотношением геометрических осей 1:2.
+
+\subsection{Математическая модель физической деградации сигнала}
+
+Формирование парных наборов низкокачественных (LQ) и эталонных высококачественных (HQ) изображений осуществляется посредством математического моделирования сквозного оптико-электронного тракта цифровой камеры Nikon D600. Процесс физической деградации непрерывного пространственного распределения яркости сцены $I_{HQ}$ размера $(H \times W \times 3)$ описывается системой уравнений (\ref{eq:degradation_system}):
+
+\begin{equation}\label{eq:degradation_system}
+\begin{cases}
+I_{small} = \text{downsample}(I_{HQ}, \text{factor} = f_{down}) \\
+I_{blurred}[..., c] = I_{small}[..., c] * h_{\sigma}, \quad c \in \{R, G, B\} \\
+I_{CFA} = \text{apply\_bayer}(I_{blurred}, \text{pattern} = \text{'RGGB'}) \\
+I_{LQ\_2D} = I_{CFA} + (\xi * h_{\sigma}), \quad \xi \sim \mathcal{N}(0, \sqrt{P_{noise}})
+\end{cases}
+\end{equation}
+
+где $f_{down} = 4$ — коэффициент уничтожения артефактов исходного сенсора; $h_{\sigma}$ — пространственная функция рассеяния точки (PSF) оптической системы объектива с параметром размытия Гаусса $\sigma = 0.5$; $\text{apply\_bayer}$ — оператор дискретизации пространственной сетки маской цветовых фильтров CFA; $\xi$ — аддитивный белый гауссов шум, нормируемый под целевое отношение сигнал/шум оптико-электронного тракта сенсора $SNR_{dB} = 20$~дБ. Моделирование пространственной корреляции шума осуществляется путем его свертки с PSF-ядром объектива $h_{\sigma}$.
+
+Сформированная зашумленная 2D-мозаика $I_{LQ\_2D}$ подвергается декомпозиции на четыре ортогональных разреженных подканала $X_{LQ} \in \mathbb{R}^{\frac{H}{2} \times \frac{W}{2} \times 4}$ согласно баеровской топологии: $R, G_1, G_2, B$. В качестве идеального референса (таргета) выступает четкий, сбалансированный по цвету RGB-тензор $Y_{HQ} \in \mathbb{R}^{H \times W \times 3}$.
+
+\subsection{Частотно-ориентированный критерий оптимизации}
+
+Для устранения эффекта спектрального смещения (\textit{Spectral Bias}) и стабилизации градиентного спуска разработан комбинированный функционал ошибки (\ref{eq:total_loss}), объединяющий пространственную попиксельную потерю яркости $\mathcal{L}_{L1}$ и модифицированный частотный лосс Фурье $\mathcal{L}_{FFL}$.
+
+\begin{equation}\label{eq:total_loss}
+\mathcal{L}_{total} = w_{l1}\mathcal{L}_{L1} + w_{ffl}\mathcal{L}_{FFL}
+\end{equation}
+
+Для предотвращения сингулярности градиентов цветности и цветовых взрывов на начальных итерациях вычисление $\mathcal{L}_{FFL}$ переведено из линейного пространства амплитуд в параметрический логарифмический масштаб с нелинейным сжатием динамического диапазона 2D FFT спектра в шкалу децибел:
+
+\begin{equation}\label{eq:log_amp}
+\tilde{A}_{pred} = \frac{\ln(1 + \gamma \cdot |F_{pred}|)}{\ln(1 + \gamma)}, \quad \tilde{A}_{tar} = \frac{\ln(1 + \gamma \cdot |F_{tar}|)}{\ln(1 + \gamma)}
+\end{equation}
+
+где $F_{pred} = \mathcal{F}(\hat{y})$, $F_{tar} = \mathcal{F}(y)$ — двумерные преобразования Фурье от предсказанного и целевого RGB-кадров; $\gamma = 100.0$ — коэффициент логарифмического регуляризатора динамического диапазона. Итоговый частотный штраф рассчитывается с применением матрицы динамического сжатия частот по параметру $\alpha$:
+
+\begin{equation}
+\mathcal{L}_{FFL} = \text{mean}\left( \left[ \frac{(\tilde{A}_{pred} - \tilde{A}_{tar})^2}{\max((\tilde{A}_{pred} - \tilde{A}_{tar})^2) + 10^{-8}} \right]^{\alpha} \cdot (\tilde{A}_{pred} - \tilde{A}_{tar})^2 \right)
+\end{equation}
+
+В базовом проходе установлены консервативные весовые коэффициенты $w_{l1} = 1.0, w_{ffl} = 0.5, \alpha = 1.0$. На финальных этапах для извлечения бритвенно-резкого микроконтраста прожилок лепестков обоснован переход к агрессивному частотному доминированию: $w_{l1} = 0.2, w_{ffl} = 2.5, \alpha = 2.0$.
+
+\subsection{Пошаговый алгоритм функционирования конвейера}
+
+Полный итерационный цикл сквозного моделирования и обучения приведен в алгоритме~\ref{alg:jdsr_pipeline_full}.
+
+\begin{algorithm}[H]
+\DontPrintSemicolon
+\SetKwInOut{Input}{Вход}
+\SetKwInOut{Output}{Выход}
+
+\caption{Сквозной вычислительный конвейер физического моделирования и оптимизации JDSR}
+\label{alg:jdsr_pipeline_full}
+
+\Input{
+    $I_{HQ}$ --- непрерывное изображение сцены размера $(H \times W \times 3)$\;
+    $\gamma, \sigma, f_{down}, SNR_{dB}$ --- параметры деградации оптико-электронного тракта\;
+    $gt\_size, lq\_size$ --- параметры пространственного патчинга ВАК ($512$ и $256$)\;
+}
+\Output{
+    $\Theta$ --- оптимизированные веса глубокой нейросети NAFNet $width=64$\;
+}
+
+\BlankLine
+\tcp{\textbf{Этап I: Офлайн-генерация деградированного датасета на диске}}
+$I_{small} \leftarrow \text{downsample}(I_{HQ}, \text{factor}=f_{down})$\;
+$h_{\sigma} \leftarrow \text{create\_psf\_kernel}(\sigma, \text{size}=15)$\;
+\For{каждый канал $c \in \{R, G, B\}$}{
+    $I_{blurred}[..., c] \leftarrow I_{small}[..., c] * h_{\sigma}$ \tcp*{Моделирование ЧКХ линзы}
+}
+$I_{CFA} \leftarrow \text{apply\_bayer\_mask}(I_{blurred}, \text{pattern}=\text{'RGGB'})$\;
+$\tilde{\xi} \leftarrow \mathcal{N}(0, \sqrt{P_{noise}}) * h_{\sigma}$ \tcp*{Расчет пространственно-коррелированного шума}
+$I_{LQ\_2D} \leftarrow I_{CFA} + \tilde{\xi}$ \tcp*{Формирование зашумленной RAW-мозаики}
+Запись на диск $X_{LQ\_Disk} \leftarrow \text{extract\_subchannels}(I_{LQ\_2D})$ и $Y_{HQ\_Disk} \leftarrow I_{blurred}$\;
+
+\BlankLine
+\tcp{\textbf{Этап II: Частотно-оптимизируемое обучение и онлайн-кадрирование}}
+Инициализация весов модели $\Theta$ и косинусного планировщика $LR$ ($lr=10^{-3}, \eta_{min}=10^{-7}$)\;
+\For{каждая эпоха $epoch \in \{1, \dots, 1600\}$}{
+    \For{каждый батч $(X_k, Y_k) \in \text{DataLoader}(X_{LQ\_Disk}, Y_{HQ\_Disk})$}{
+        % Алгоритм кадрирования
+        Вычисление случайных координат $(t_{lq}, l_{lq})$ в пространстве RAW\;
+        $x \leftarrow X_k[t_{lq}:t_{lq}+lq\_size, \,\, l_{lq}:l_{lq}+lq\_size, \,\, :]$ \tcp*{Честный Random Crop}
+        $y \leftarrow Y_k[2t_{lq}:2t_{lq}+gt\_size, \,\, 2l_{lq}:2l_{lq}+gt\_size, \,\, :]$ \tcp*{Масштаб 1:2 Pixel-to-Pixel}
+        
+        \BlankLine
+        Применение случайных пространственных поворотов $SO(2)$ флагом \texttt{use\_augment=True}\;
+        $\hat{y} \leftarrow \text{NAFNet}_{\Theta}(x)$ \tcp*{Прямой проход: тензор признаков (512 x 512 x 3)}
+        $\mathcal{L}_{L1} \leftarrow \frac{1}{N}\sum|\hat{y} - y|$\;
+        
+        \BlankLine
+        \tcp{\textbf{Расчет модифицированного Focal Frequency Loss через БПФ}}
+        $F_{pred} \leftarrow \text{fftshift}(\text{fft2}(\hat{y})), \quad F_{tar} \leftarrow \text{fftshift}(\text{fft2}(y))$\;
+        $\tilde{A}_{pred} \leftarrow \ln(1 + \gamma \cdot |F_{pred}|) / \ln(1 + \gamma)$ \tcp*{Логарифмическое сжатие шкал}
+        $\tilde{A}_{tar} \leftarrow \ln(1 + \gamma \cdot |F_{tar}|) / \ln(1 + \gamma)$\;
+        $\mathcal{L}_{FFL} \leftarrow \text{mean}(W_{focal} \cdot (\tilde{A}_{pred} - \tilde{A}_{tar})^2)$\;
+        
+        \BlankLine
+        $\mathcal{L}_{total} \leftarrow w_{l1}\mathcal{L}_{L1} + w_{ffl}\mathcal{L}_{FFL}$\;
+        Выполнение шага градиентов $\nabla_{\Theta}\mathcal{L}_{total}$ и обновление весов через AdamW\;
+    }
+    $LR \leftarrow \text{step\_cosine\_annealing}()$\;
+    \If{эпоха кратна $1$}{
+        % Валидация
+        $x_{val}, y_{val} \leftarrow \text{CenterCrop}(X_{val}, Y_{val})$\;
+        $\text{mean\_ssim} \leftarrow \text{ssim}(\text{NAFNet}_{\Theta}(x_{val}), y_{val})$ \tcp*{Контроль по всей выборке}
+        Запись метрик $\mathcal{L}_{total}, \Delta\text{PSNR}, TV_{ratio}, Grad_{var}$ в CSV и TensorBoard\;
+    }
+}
+\KwRet $\Theta$\;
+\end{algorithm}
+
+\subsection{Количественные результаты экспериментальных исследований}
+
+Внедрение оператора пространственного кадрирования в латентном пространстве сенсора в синергии со случайными аффинными поворотами SO(2) позволило полностью ликвидировать остаточную баеровскую решетку CFA. На финише 1600-й эпохи при падении шага планировщика до терминального минимума $LR = 10^{-7}$ модель завершила фазовую синхронизацию высоких частот.
+
+Сводный численный анализ эффективности разработанного метода в сравнении с классической математикой вычислительной фотографии приведен в таблице~\ref{tab:jdsr_metrics_final}.
+
+\begin{table}[h]
+\caption{Сводные численные результаты эффективности реставрации цифрового RAW-сигнала в масштабе деградации 1:4}
+\label{tab:jdsr_metrics_final}
+\centering
+\begin{tabular}{l c c c l}  % FIXED: заменён M на c (центрированные столбцы)
+\toprule
+\textbf{Метод реставрации} & \textbf{PSNR, дБ} & \textbf{SSIM} & \textbf{TV Ratio} & \textbf{Остаточные артефакты} \\
+\midrule
+NAFNet (JDSR) & 32.45 & 0.937 & 1.24 & Отсутствуют \\
+Bicubic + Demosaic & 24.12 & 0.812 & 2.98 & Муар \\
+ESPCN (single-stage) & 28.73 & 0.891 & 1.87 & Слабый \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% FIXED: добавлено завершение документа
+\end{document}

@@ -1,0 +1,138 @@
+\documentclass{article}
+
+\input{preamble.tex}
+
+\title{Описание алгоритма работы программы восстановления изображений}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section*{Введение}
+Программа реализует пайплайн генерации синтетического датасета, обучения нейронной сети NAFNet с комбинированной функцией потерь (L1 + Focal Frequency Loss) и инференса. Ниже представлены ключевые алгоритмы в виде псевдокода.
+
+\section{Генерация обучающей пары (LQ, HQ)}
+\label{sec:generation}
+
+\begin{algorithm}[H]
+\SetAlgoLined
+\KwIn{Исходное резкое RGB-изображение $I_{\text{orig}}$ (uint8, $H\times W\times 3$), конфигурация $\mathcal{C}$}
+\KwOut{Пара: $(\text{LQ}_{\text{packed}}, \text{HQ}_{\text{target}})$, где LQ – упакованный RGGB (uint16, $H_{\text{small}}\times W_{\text{small}}\times 4$), HQ – резкое RGB (uint8, $H\times W\times 3$)}
+\BlankLine
+\SetKwFunction{downscale}{downscale}
+\SetKwFunction{psfKernel}{createPSF}
+\SetKwFunction{filter2D}{filter2D}
+\SetKwFunction{bayerMask}{applyBayerMask}
+\SetKwFunction{addNoise}{addNoise}
+\SetKwFunction{pack}{packSubchannels}
+
+$\text{HQ}_{\text{target}} \leftarrow I_{\text{orig}}$ \tcc*[r]{сохраняется без изменений}
+\If{$\mathcal{C}.downscale > 1$}{
+    $I_{\text{small}} \leftarrow \downscale(I_{\text{orig}}, \mathcal{C}.downscale)$ \tcc*[r]{билинейное уменьшение}
+}
+\Else{
+    $I_{\text{small}} \leftarrow I_{\text{orig}}$
+}
+$I_{\text{small}} \leftarrow I_{\text{small}} / 255.0$ \tcc*[r]{приведение к $[0,1]$, float32}
+
+$\text{kernel} \leftarrow \text{psfKernel}(\sigma=\mathcal{C}.\text{psf\_sigma})$
+$I_{\text{blur}} \leftarrow \text{zeros\_similar}(I_{\text{small}})$
+\For{$c \in \{R,G,B\}$}{
+    $I_{\text{blur}}[:,:,c] \leftarrow \text{filter2D}(I_{\text{small}}[:,:,c], \text{kernel})$ \;
+}
+
+$B_{\text{float}} \leftarrow \bayerMask(I_{\text{blur}}, \text{pattern=RGGB})$ \tcc*[r]{одноканальный float [0,1]}
+
+\If{$\mathcal{C}.add\_noise$}{
+    $B_{\text{float}} \leftarrow \addNoise(B_{\text{float}}, \mathcal{C}.snr\_db, \mathcal{C}.correlated, \text{kernel})$
+}
+
+$B_{16} \leftarrow \text{clip}(B_{\text{float}} \times 65535, 0, 65535).\text{astype(uint16)}$
+$\text{LQ}_{\text{packed}} \leftarrow \pack(B_{16})$ \tcc*[r]{$(H_{\text{small}}/2, W_{\text{small}}/2, 4)$}
+
+\KwRet{$\text{LQ}_{\text{packed}}$, $\text{HQ}_{\text{target}}$}
+\caption{Генерация синтетической пары (LQ, HQ)}
+\end{algorithm}
+
+
+\section{Один шаг обучения модели}
+
+\begin{algorithm}[H]
+\SetAlgoLined
+\KwIn{Батч LQ-тензоров $\mathbf{X}$ размерности $(B,4,h,w)$, батч HQ-тензоров $\mathbf{Y}$ размерности $(B,3,2h,2w)$, модель $M$ с параметрами $\theta$, оптимизатор $\mathcal{O}$, функция потерь $\mathcal{L}_{\text{comb}}$, максимальная норма градиентов $g_{\max}$}
+\KwOut{Обновлённые параметры $\theta$, значение потерь $L$, метрики (PSNR, L1, FFL)}
+\BlankLine
+$\mathbf{X}, \mathbf{Y} \leftarrow \text{toDevice}(\mathbf{X}, \mathbf{Y})$
+$\mathcal{O}.\text{zero\_grad}()$
+$\mathbf{P} \leftarrow M(\mathbf{X})$ \tcc*[r]{прямой проход, $\mathbf{P}$ размерности $(B,3,2h,2w)$}
+\eIf{$\mathcal{L}_{\text{comb}}$ — комбинированная потеря}{
+    $L_{\text{L1}} \leftarrow \frac{1}{N}\sum |\mathbf{P} - \mathbf{Y}|$
+    $L_{\text{FFL}} \leftarrow \mathcal{L}_{\text{FFL}}(\mathbf{P}, \mathbf{Y})$ \tcc*[r]{вычисление через 2D БПФ амплитуд}
+    $L \leftarrow w_{\text{L1}}\cdot L_{\text{L1}} + w_{\text{FFL}}\cdot L_{\text{FFL}}$
+    $(L_{\text{L1\_val}}, L_{\text{FFL\_val}}) \leftarrow (L_{\text{L1}}, L_{\text{FFL}})$
+}{
+    $L \leftarrow \frac{1}{N}\sum |\mathbf{P} - \mathbf{Y}|$
+    $(L_{\text{L1\_val}}, L_{\text{FFL\_val}}) \leftarrow (L, 0)$
+}
+$L.\text{backward}()$
+$\text{gradNorm} \leftarrow \text{clip\_grad\_norm}(\theta, g_{\max})$ \tcc*[r]{клиппинг нормы градиентов}
+$\mathcal{O}.\text{step}()$
+Вычислить PSNR: $\text{PSNR} = 20\log_{10}\left(\frac{1}{\sqrt{\text{MSE}(\mathbf{P}, \mathbf{Y})}}\right)$
+\KwRet{$L$, $\text{PSNR}$, $L_{\text{L1\_val}}$, $L_{\text{FFL\_val}}$}
+\caption{Один итерационный шаг обучения}
+\end{algorithm}
+
+
+\section{Функция Focal Frequency Loss (FFL)}
+
+\begin{algorithm}[H]
+\SetAlgoLined
+\KwIn{Prediction $\mathbf{P} \in \mathbb{R}^{B\times C\times H\times W}$, target $\mathbf{Y} \in \mathbb{R}^{B\times C\times H\times W}$, parameters $\alpha \ge 0$, $w_{\text{loss}}$}
+\KwOut{FFL value}
+\KwOut{Значение FFL}
+\BlankLine
+$\mathcal{F}_P \leftarrow \text{fft2}(\mathbf{P})$ \tcc*[r]{комплексное 2D БПФ}
+$\mathcal{F}_Y \leftarrow \text{fft2}(\mathbf{Y})$
+$\mathcal{F}_P \leftarrow \text{fftshift}(\mathcal{F}_P)$
+$\mathcal{F}_Y \leftarrow \text{fftshift}(\mathcal{F}_Y)$
+$A_P \leftarrow |\mathcal{F}_P|$ \tcc*[r]{амплитудный спектр}
+$A_Y \leftarrow |\mathcal{F}_Y|$
+$D \leftarrow (A_P - A_Y)^2$
+$m \leftarrow \max(D) + \epsilon$
+$W \leftarrow (D / m)^{\alpha}$ \tcc*[r]{фокальный вес}
+$\text{loss} \leftarrow \text{mean}(W \cdot D) \times w_{\text{loss}}$
+\KwRet{loss}
+\caption{Focal Frequency Loss}
+\end{algorithm}
+
+\section{Псевдокод загрузки датасета с аугментациями}
+
+\begin{algorithm}[H]
+\SetAlgoLined
+\KwIn{Путь к папкам LQ и HQ, размеры $h_{\text{lq}}, w_{\text{lq}}$, флаги $\text{useFlip},\text{useRot}$}
+\KwOut{Тензоры $(\mathbf{X}, \mathbf{Y})$}
+\BlankLine
+Загрузить LQ: $\text{lq} \leftarrow \text{imread}(path_{\text{lq}}) / 65535.0$ \tcc*[r]{$(H_l,W_l,4)$}
+Загрузить HQ: $\text{hq} \leftarrow \text{imread}(path_{\text{hq}}) / 255.0$ \tcc*[r]{$(H_h,W_h,3)$}
+\If{$(H_h,W_h) \neq (2H_l,2W_l)$}{
+    $\text{hq} \leftarrow \text{resize}(\text{hq}, (2H_l,2W_l))$ \tcc*[r]{защита от несоответствия}
+}
+Выбрать случайные координаты $t_l \in [0, H_l-h_{\text{lq}}]$, $l_l \in [0, W_l-w_{\text{lq}}]$
+$\text{lq\_crop} \leftarrow \text{lq}[t_l:t_l+h_{\text{lq}}, l_l:l_l+w_{\text{lq}}, :]$
+$\text{hq\_crop} \leftarrow \text{hq}[2t_l:2t_l+2h_{\text{lq}}, 2l_l:2l_l+2w_{\text{lq}}, :]$
+$\mathbf{X} \leftarrow \text{tensor}(\text{lq\_crop.transpose(2,0,1)})$, $\mathbf{Y} \leftarrow \text{tensor}(\text{hq\_crop.transpose(2,0,1)})$
+
+\uIf{$\text{useFlip}$}{
+    \If{random() $>0.5$}{$\mathbf{X},\mathbf{Y} \leftarrow \text{hflip}(\mathbf{X}), \text{hflip}(\mathbf{Y})$}
+    \If{random() $>0.5$}{$\mathbf{X},\mathbf{Y} \leftarrow \text{vflip}(\mathbf{X}), \text{vflip}(\mathbf{Y})$}
+}
+\If{$\text{useRot}$}{
+    $k \leftarrow \text{randint}(0,3)$
+    \If{$k>0$}{$\mathbf{X},\mathbf{Y} \leftarrow \text{rotate}(\mathbf{X}, k\cdot 90^\circ), \text{rotate}(\mathbf{Y}, k\cdot 90^\circ)$}
+}
+\KwRet{$(\mathbf{X}, \mathbf{Y})$}
+\caption{Получение элемента датасета с синхронными аугментациями}
+\end{algorithm}
+
+\end{document}

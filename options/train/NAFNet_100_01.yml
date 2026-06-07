@@ -75,7 +75,7 @@ network_g:
 train:
   validation_freq: 1
   save_checkpoint_epoch: 10
-  num_epochs: 300
+  num_epochs: 5000
 
   optim_g:
     type: AdamW

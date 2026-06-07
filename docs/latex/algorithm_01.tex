@@ -1,0 +1,107 @@
+\documentclass[12pt]{article}
+
+% --- Настройки шрифтов и локализации для LuaLaTeX ---
+\usepackage{fontspec}
+\usepackage{polyglossia}
+\setmainlanguage{russian}
+\setotherlanguage{english}
+
+\usepackage{fontspec}
+\defaultfontfeatures{Ligatures={TeX}}
+\usepackage{polyglossia}
+\setmainlanguage{russian}
+\setotherlanguage{english}
+\setmainfont{Times New Roman}[Script=Cyrillic, Ligatures=TeX]
+\setromanfont{Times New Roman}[Script=Cyrillic, Ligatures=TeX]
+\setsansfont{Arial}[Script=Cyrillic, Ligatures=TeX]
+\setmonofont{Courier New}[Ligatures=TeX]
+\newfontfamily{\cyrillicfont}{Times New Roman}[Script=Cyrillic, Ligatures=TeX]
+\newfontfamily{\cyrillicfontrm}{Times New Roman}[Script=Cyrillic, Ligatures=TeX]
+\newfontfamily{\cyrillicfonttt}{Courier New}
+\newfontfamily{\cyrillicfontsf}{Arial}[Script=Cyrillic, Ligatures=TeX]
+\usepackage{polyglossia}
+
+\usepackage[ruled,vlined,algo2e]{algorithm2e}
+\usepackage{caption}
+
+\usepackage{amsmath}
+
+\begin{document}
+
+\begin{algorithm2e}[H]
+\DontPrintSemicolon 
+\SetKwInOut{Input}{Вход}
+\SetKwInOut{Output}{Выход}
+
+\caption{Сквозной конвейер физического моделирования и оптимизации JDSR}
+\label{alg:jdsr_pipeline}
+
+\Input{
+    $I_{HQ}$ --- RGB-изображение сцены размера $(H \times W \times 3)$\;
+    $\gamma$ --- коэффициент логарифмического сжатия спектра\;
+    $\sigma$ --- параметр PSF-ядра оптической системы камеры\;
+    $f_{down}$ --- коэффициент пространственного даунскейлинга\;
+    $SNR_{dB}$ --- целевое отношение сигнал/шум тракта\;
+}
+\Output{
+    $\Theta$ --- оптимизированные веса нейросетевой архитектуры NAFNet\;
+}
+
+\BlankLine 
+\tcp{\textbf{Этап I: Физическое моделирование деградации сигнала}} 
+\If{$f_{down} > 1$}{
+    $I_{small} \leftarrow \text{downsample}(I_{HQ}, \text{factor}=f_{down})$ \tcp*{Удаление исходных артефактов}
+}
+
+\BlankLine
+$h_{\sigma} \leftarrow \text{create\_psf\_kernel}(\sigma, \text{size}=15)$ \tcp*{Расчет PSF-ядра Гаусса} \;
+\For{каждый канал $c \in \{R, G, B\}$}{
+    $I_{blurred}[..., c] \leftarrow I_{small}[..., c] * h_{\sigma}$ \tcp*{Моделирование ЧКХ Nikon D600}
+}
+
+\BlankLine
+$I_{CFA} \leftarrow \text{apply\_bayer\_mask}(I_{blurred}, \text{pattern}=\text{'RGGB'})$ \tcp*{Дискретизация CFA} \;
+$P_{noise} \leftarrow \text{mean}(I_{CFA}^2) / (10^{SNR_{dB} / 10})$ \tcp*{Расчет мощности шума} \;
+$\xi \leftarrow \mathcal{N}(0, \sqrt{P_{noise}})$ \tcp*{Генерация аддитивного АБГШ} \;
+$\tilde{\xi} \leftarrow \xi * h_{\sigma}$ \tcp*{Пространственная корреляция шума с ЧКХ} \;
+$I_{LQ\_2D} \leftarrow I_{CFA} + \tilde{\xi}$ \tcp*{Формирование зашумленной мозаики матрицы} \;
+
+\BlankLine
+$X_{LQ} \leftarrow \text{extract\_bayer\_subchannels}(I_{LQ\_2D})$ \tcp*{Тензор подканалов $(H/2 \times W/2 \times 4)$} \;
+$Y_{HQ} \leftarrow \text{clip}(I_{blurred}, 0, 255)$ \tcp*{Формирование RGB-таргета $(H \times W \times 3)$} \;
+
+\BlankLine
+\tcp{\textbf{Этап II: Частотно-ориентированная оптимизация в 2D FFT пространстве}} 
+Инициализация весов модели $\Theta$ и косинусного планировщика $LR$\;
+\For{каждая эпоха $epoch \in \{1, \dots, N_{epochs}\}$}{
+    \For{каждый батч $(x, y) \in \text{DataLoader}(X_{LQ}, Y_{HQ})$}{
+        $\hat{y} \leftarrow \text{NAFNet}_{\Theta}(x)$ \tcp*{Прямой проход: тензор $(H \times W \times 3)$} \;
+        $\mathcal{L}_{L1} \leftarrow \frac{1}{N}\sum|\hat{y} - y|$ \tcp*{Пространственная потеря яркости} \;
+        
+        \BlankLine
+        $F_{pred} \leftarrow \text{fftshift}(\text{fft2}(\hat{y})), \quad F_{tar} \leftarrow \text{fftshift}(\text{fft2}(y))$\;
+        $A_{pred} \leftarrow |F_{pred}|, \quad $A_{tar} \leftarrow |F_{tar}|$\;
+        
+        \BlankLine
+        $\tilde{A_{pred}} \leftarrow \ln(1 + \gamma \cdot A_{pred}) / \ln(1 + \gamma)$ \tcp*{Логарифмическое сжатие спектра} \;
+        $\tilde{A_{tar}} \leftarrow \ln(1 + \gamma \cdot A_{tar}) / \ln(1 + \gamma)$\;
+        
+        \BlankLine
+        $D_{amp} \leftarrow (\tilde{A_{pred}} - \tilde{A_{tar}})^2$\;
+        $W_{focal} \leftarrow (D_{amp} / (\max(D_{amp}) + 10^{-8}))^{\alpha}$ \tcp*{Матричное взвешивание} \;
+        $\mathcal{L}_{FFL} \leftarrow \text{mean}(W_{focal} \cdot D_{amp})$\;
+        
+        \BlankLine
+        $\mathcal{L}_{total} \leftarrow w_{l1}\mathcal{L}_{L1} + w_{ffl}\mathcal{L}_{FFL}$ \tcp*{Комбинированный функционал ошибки} \;
+        Выполнение шага градиентов $\nabla_{\Theta}\mathcal{L}_{total}$ и обновление весов через AdamW\;
+    }
+    $LR \leftarrow \text{step}()$\;
+    \If{эпоха кратна $val\_freq$}{
+        $\text{mean\_ssim} \leftarrow \text{VisualValidator}(\text{model}_{\Theta})$ \tcp*{Валидация по выборке} \;
+        Запись метрик в CSV/TensorBoard\;
+    }
+}
+\KwRet $\Theta$\;
+\end{algorithm2e}
+
+\end{document}

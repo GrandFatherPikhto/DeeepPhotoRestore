@@ -1,0 +1,87 @@
+\documentclass[12pt,a4paper]{article}
+\input{preamble.tex}
+
+\begin{document}
+
+\begin{algorithm}[H]
+% \SetCustomAlgoRuKeywords
+\DontPrintSemicolon
+\SetKwInOut{KwIn}{Вход}
+\SetKwInOut{KwOut}{Выход}
+
+\TitleOfAlgo{Сквозной конвейер восстановления и апскейла RAW-изображений на базе NAFNet}
+
+\KwIn{Каталог исходных изображений высокого разрешения $D_{\text{source}}$, конфигурационный файл параметров \texttt{config.yml}, количество эпох обучения $T$, размер батча $B$, целевые масштабы патчей $S_{\text{lq}}, S_{\text{gt}}$, коэффициент апскейла $F_{\text{scale}}$.}
+\KwOut{Оптимизированные веса нейросетевой модели $\Theta_{\text{opt}}$, файлы сквозной аналитики \texttt{train\_metrics.csv}, \texttt{val\_metrics.csv}, верификационные превью $\text{Img}_{\text{lq}}, \text{Img}_{\text{gt}}$.}
+
+\BlankLine
+\Gray{/* Этап I: Инициализация и верификация дисковой подсистемы */}
+Парсинг и валидация аргументов командной строки через модуль \texttt{config.py}\;
+Инициализация двухпоточного логгера \texttt{setup\_logger()} в файл \texttt{pipeline.log}\;
+\If{выставлен флаг \texttt{--clean-training}}{
+    Выборочное удаление старых каталогов \texttt{checkpoints}, \texttt{tb\_logs}, \texttt{val\_predictions}\;
+}
+
+\BlankLine
+\Gray{/* Этап II: Синхронная генерация синтетического датасета */}
+\If{каталог датасета пуст {\bf или} выставлен флаг \texttt{--clean-dataset}}{
+    Очистка директорий \texttt{train} и \texttt{test} внутри корня $D_{\text{root}}$\;
+    Разбиение файлов из $D_{\text{source}}$ на подмножества $\text{Files}_{\text{train}}$ и $\text{Files}_{\text{test}}$ в пропорции $\text{ratio}$\;
+    \ForEach{изображение $I_{\text{rgb}}$ в $\text{Files}_{\text{train}}, \text{Files}_{\text{test}}$}{
+        Чтение матрицы пикселей и приведение к 8-битному RGB-пространству\;
+        Вырезание центрального патча $I_{\text{crop}}$ размера $S_{\text{gt}} \times S_{\text{gt}}$ с соблюдением чётности Bayer-фазы\;
+        Применение PSF-размытия: $I_{\text{blur}} = \mathcal{Filter2D}(I_{\text{crop}}, \text{Kernel}_{\text{PSF}})$\;
+        Накладывание маски мозаики фильтров: $I_{\text{bayer}} = \mathcal{ApplyBayerMask}(I_{\text{blur}}, \text{'RGGB'})$\;
+        Генерация аддитивно-мультипликативного шума матрицы на основе SNR в дБ\;
+        Упаковка 2D-мозаики в 4-канальный массив субканалов: $I_{\text{packed}} = \mathcal{ExtractSubchannels}(I_{\text{bayer}})$\;
+        Сохранение пар на диск: $I_{\text{packed}} \rightarrow \text{uint16 tiff}$, $I_{\text{crop}} \rightarrow \text{uint8 png}$\;
+    }
+}
+
+\BlankLine
+\Gray{/* Этап III: Диагностический визуальный контроль данных */}
+Извлечение случайного верификационного сэмпла из загруженного класса \texttt{CustomNEFPairDataset}\;
+Применение быстрой билинейной интерполяции к 4-канальному входу\;
+Конвертация цветового пространства из RGB в BGR: $I_{\text{bgr}} = \mathcal{Cv2Color}(I_{\text{rgb}}, \text{RGB2BGR})$\;
+Запись диагностических превью $\text{Img}_{\text{lq}}$ и $\text{Img}_{\text{gt}}$ на диск через \texttt{cv2.imwrite()}\;
+
+\BlankLine
+\Gray{/* Этап IV: Нагрузочный Smoke-тест вычислительного графа */}
+Инициализация базовой модели \texttt{NAFNet} и обёртки \texttt{NAFNetDemosaicSuperResolutionWrapper}\;
+Перенос графа модели и тестового батча на ускоритель \texttt{torch.device('cuda')}\;
+Прямой проход: $\hat{Y}_{\text{smoke}} = \text{Model}(X_{\text{smoke}})$\;
+Обсчёт комбинированного критерия потерь: $L = L_1(\hat{Y}_{\text{smoke}}, Y_{\text{smoke}}) + L_{\text{FFL\_Log}}(\hat{Y}_{\text{smoke}}, Y_{\text{smoke}})$\;
+Обратный проход градиентов $L\text{.backward()}$ и шаг оптимизатора AdamW\;
+
+\BlankLine
+\Gray{/* Этап V: Основной цикл оптимизации параметров (Обучение) */}
+Инициализация логгеров TensorBoard и CSV-аналитики\;
+\For{эпоха $e = 0$ \KwTo $T-1$}{
+    Активация режима обучения: $\text{Model.train()}$\;
+    \ForEach{батч $(X_{\text{lq}}, Y_{\text{gt}})$ в \texttt{DataLoader}}{
+        Обнуление градиентов оптимизатора: $\text{optimizer.zero\_grad()}$\;
+        Прямой проход через обёртку в полном разрешении: $\hat{Y} = \text{Model}(X_{\text{lq}})$\;
+        Вычисление пространственно-частотного лосса: $L_{\text{total}}, l_1, l_{\text{ffl}} = \text{CombinedLoss}(\hat{Y}, Y_{\text{gt}})$\;
+        Обратный проход градиентов: $L_{\text{total}}\text{.backward()}$\;
+        Ограничение нормы градиентов: $\mathcal{ClipGradNorm}(\text{Model.parameters()}, 1.0)$\;
+        Выполнение шага оптимизации: $\text{optimizer.step()}$\;
+        \If{$e \pmod{\text{file\_log\_freq}} == 0$}{
+            Расчёт дисперсии градиентов весов $\text{Grad}_{\text{var}}$ и коэффициента вариации $\text{TV}_{\text{ratio}}$\;
+            Запись метрик в \texttt{train\_metrics.csv} и \texttt{train\_progress.log}\;
+        }
+    }
+    Обновление скорости обучения шедулером: $\text{scheduler.step()}$\;
+    \If{эпоха $e$ удовлетворяет \texttt{validation\_freq}}{
+        Активация режима валидации: $\text{Model.eval()}$\;
+        Расчёт метрик структурного сходства SSIM на тестовом Center Crop патче\;
+        Запись результатов в \texttt{val\_metrics.csv}\;
+    }
+    \If{эпоха $e$ удовлетворяет \texttt{save\_checkpoint\_epoch}}{
+        Сохранение состояний модели, оптимизатора и шедулера в \texttt{.pth} файл чекпоинта\;
+    }
+}
+\Return{Оптимизированные веса модели $\Theta_{\text{opt}}$}
+\caption{Алгоритм работы распределённого ноосферного конвейера RAW-restoration}
+\end{algorithm}
+
+\end{document}
