@@ -1,215 +1,221 @@
-# CONFIG.md – Полный справочник по конфигурационному YAML-файлу
+# CONFIG.md – Конфигурация эксперимента
 
-Конфигурационный файл (например, `options/train/RAW_NAFNet_Test_20.yml`) используется **одновременно** скриптами `run_pipeline.py` (генерация датасета, визуальный контроль, smoke‑тест) и `run_training.py` (обучение). Ниже приведены все секции с пояснениями, какие параметры к какому скрипту относятся.
-
-> **Примечание:** Пути, содержащие `{name}`, автоматически заменяются на значение из поля `name`.
+Все настройки конвейера (генерация датасета, архитектура сети, обучение, логирование) задаются в YAML-файле, путь к которому передаётся скриптам через аргумент `-opt`. Ниже приведено описание всех секций и параметров.
 
 ---
 
-## 1. Общие настройки (используются обоими скриптами)
+## Секция `name`
 
-| Параметр | Тип | Описание | Пример |
-|----------|-----|----------|--------|
-| `name` | строка | Имя эксперимента. Подставляется в пути, содержащие `{name}`. | `RAW-NAFNet-Test-20` |
-| `manual_seed` | целое | Фиксация генератора случайных чисел (воспроизводимость). | `42` |
-
----
-
-## 2. Секция `path` (используется и pipeline, и training)
-
-| Параметр | Скрипт | Описание | Пример |
-|----------|--------|----------|--------|
-| `source_images_dir` | pipeline | Папка с исходными резкими изображениями для генерации датасета. | `"/home/grand/Images/NEF_Test_20"` |
-| `dataset_root` | pipeline, training | Корень сгенерированного датасета (внутри создаются `train/`, `test/`). | `"datasets/nef_nafnet_20"` |
-| `resume_path` | training | Путь для сохранения / восстановления чекпоинта (поддерживает `{name}`). | `"experiments/{name}/checkpoints/resume_nef_nafnet_20.pth"` |
-| `pretrain_network_g` | training | (опционально) Путь к предобученным весам NAFNet (например, SIDD). | `"pretrained/NAFNet-SIDD-width32.pth"` |
-
----
-
-## 3. Секция `process_data` – **только для `run_pipeline.py`** (генерация датасета)
-
-Определяет физическую деградацию, применяемую к исходным HQ для получения LQ.
-
-| Параметр | Тип | Описание | Пример |
-|----------|-----|----------|--------|
-| `downscale_factor` | целое | Во сколько раз уменьшить разрешение перед формированием LQ. Для полного восстановления с `upscale_factor` в сети должно быть `upscale_factor = 2 * downscale_factor` (см. п. 12 ТЗ). | `4` |
-| `noise.add` | логическое | Добавлять ли шум. | `true` |
-| `noise.snr_db` | число | Отношение сигнал/шум в децибелах. | `20` |
-| `noise.correlated` | логическое | Использовать коррелированный шум (свёртка с PSF). | `true` |
-| `noise.psf_sigma` | число | Сигма гауссианы для PSF (размытие). | `0.5` |
-
----
-
-## 4. Секция `network_g` – архитектура NAFNet (используется и pipeline, и training)
-
-| Параметр | Описание | Пример |
-|----------|----------|--------|
-| `type` | Тип сети (всегда `NAFNet`). | `NAFNet` |
-| `arch_file` | Путь к файлу архитектуры (из субмодуля NAFNet). | `"modules/NAFNet/basicsr/models/archs/NAFNet_arch.py"` |
-| `class_name` | Имя класса в файле архитектуры. | `"NAFNet"` |
-| `num_in_ch` | Число входных каналов (для RGGB = 4). | `4` |
-| `num_out_ch` | Число выходных каналов (RGB = 3). | `3` |
-| `width` | Базовая ширина каналов (количество фильтров в первом слое). | `32` |
-| `enc_blk_nums` | Список: количество блоков NAFNet на этапах энкодера. | `[2, 2, 4, 8]` |
-| `middle_blk_num` | Количество блоков в латентном пространстве (bottleneck). | `12` |
-| `dec_blk_nums` | Список: количество блоков NAFNet на этапах декодера. | `[2, 2, 2, 2]` |
-| `upscale_factor` | Коэффициент увеличения разрешения (PixelShuffle). Должен быть согласован с `downscale_factor` и размерами патчей. | `2` (стандарт) или `8` (для `downscale_factor=4` по п. 12 ТЗ) |
-
-> **Важно:** Соотношение размеров патчей в датасете: `gt_size = upscale_factor * lq_size`. Для `upscale_factor=2` классический случай, для `upscale_factor=8` – при `downscale_factor=4`.
-
----
-
-## 5. Секция `datasets` – **только для `run_training.py`** (загрузка данных)
-
-| Параметр | Описание | Пример |
-|----------|----------|--------|
-| `train.type` | Имя класса датасета (должен быть `CustomNEFPairDataset`). | `CustomNEFPairDataset` |
-| `train.batch_size_per_gpu` | Размер батча на один GPU. | `16` |
-| `train.num_worker_per_gpu` | Количество процессов загрузки данных. | `4` |
-| `train.auto_resume` | Автоматически продолжать обучение из чекпоинта (если найден). | `true` |
-| `train.gt_size` | Размер выходного RGB‑патча. **Должен быть равен `upscale_factor * lq_size`**. | `256` (при `upscale_factor=2`) или `1024` (при `upscale_factor=8`) |
-| `train.lq_size` | Размер входного упакованного RGGB‑патча. | `128` |
-| `train.use_flip` | Включить случайные отражения (горизонтальные/вертикальные). | `true` |
-| `train.use_rot` | Включить случайные повороты на 90/180/270 градусов. | `true` |
-
-> **Примечание:** Параметр `save_checkpoint_epoch` в секции `datasets` устарел; используйте одноимённый в секции `train`.
-
----
-
-## 6. Секция `train` – **только для `run_training.py`** (гиперпараметры обучения)
-
-| Параметр | Описание | Пример |
-|----------|----------|--------|
-| `num_epochs` | Общее количество эпох. | `200` |
-| `validation_freq` | Как часто (эпох) выполнять валидацию. | `1` |
-| `save_checkpoint_epoch` | Как часто (эпох) сохранять чекпоинт. | `5` |
-| `optim_g.lr` | Начальная скорость обучения. | `1e-3` |
-| `optim_g.weight_decay` | L2‑регуляризация (weight decay). | `1e-4` |
-| `optim_g.betas` | Параметры AdamW `(beta1, beta2)`. | `[0.9, 0.999]` |
-| `scheduler.eta_min` | Минимальная скорость обучения в конце (CosineAnnealingLR). | `1e-7` |
-
----
-
-## 7. Секция `losses` – **только для `run_training.py`** (функция потерь)
-
-| Параметр | Описание | Пример |
-|----------|----------|--------|
-| `type` | Тип лосса: `"combined"` (L1 + FFL) или `"l1"`. | `combined` |
-| `l1_weight` | Вес L1 компоненты. | `1.0` |
-| `ffl_weight` | Вес Focal Frequency Loss. | `0.5` |
-| `ffl_alpha` | Параметр фокусировки в FFL (≥0). | `1.0` |
-| `ffl_log_factor` | Фактор логарифмического сжатия спектра (при `ffl_type="log"`). | `100.0` |
-| `ffl_type` | Тип FFL: `"linear"` (стандартный) или `"log"` (логарифмический, стабильнее). | `"log"` |
-
----
-
-## 8. Секция `logger` – **только для `run_training.py`** (логирование метрик)
-
-| Параметр | Описание | Пример |
-|----------|----------|--------|
-| `print_freq` | Частота вывода в консоль (каждые N шагов). | `2` |
-| `use_tb_logger` | Включить TensorBoard. | `true` |
-| `log_file_name` | Имя текстового файла с метриками (в папке эксперимента). | `"train_progress.log"` |
-| `csv_file_name` | Имя CSV‑файла с метриками. | `"train_metrics.csv"` |
-| `log_csv` | Записывать ли в CSV. | `true` |
-| `file_log_freq` | Частота записи в текстовый лог (шаги). | `1` |
-| `log_loss_components` | Записывать отдельно L1 и FFL. | `true` |
-| `include_in_console` | Какие метрики выводить в консоль (словарь). | `loss: true, psnr: true, vram: true` |
-| `include_in_file_log` | Какие метрики сохранять в текстовый файл (словарь). | `loss: true, psnr: true, log_ssim: true` |
-
----
-
-## 9. Секция `visuals_logger` – используется `run_pipeline.py` (визуальный контроль)
-
-| Параметр | Описание | Пример |
-|----------|----------|--------|
-| `output_dir` | Папка для сохранения превью LQ/HQ. Поддерживает `{name}`. | `"experiments/{name}/debug_visuals"` |
-| `lq_preview_name` | Имя файла для LQ‑превью (после билинейной демозаики). | `"debug_lq_preview.png"` |
-| `gt_reference_name` | Имя файла для HQ‑эталона. | `"debug_gt_reference.png"` |
-
----
-
-## 10. Секция `pipeline_logger` – используется обоими скриптами (общий лог)
-
-| Параметр | Описание | Пример |
-|----------|----------|--------|
-| `log_file` | Путь к файлу для сообщений (предупреждения, ошибки, SSIM). | `"experiments/{name}/pipeline.log"` |
-
----
-
-## Пример полного конфигурационного файла (актуальный)
+Обязательный параметр. Имя эксперимента. Используется для создания подпапки в `experiments/` и для подстановки `{name}` в пути (например, `resume_path`).
 
 ```yaml
-name: RAW-NAFNet-Test-20
+name: RAW-NAFNet-Final-100
+```
+
+---
+
+## Секция `manual_seed`
+
+Фиксация генератора случайных чисел для воспроизводимости.
+
+```yaml
 manual_seed: 42
+```
 
+---
+
+## Секция `path`
+
+Пути к данным и чекпоинтам.
+
+| Параметр | Описание | Пример |
+|----------|----------|--------|
+| `source_images_dir` | Папка с исходными резкими RGB‑изображениями (NEF, PNG, JPEG и др.) | `"/home/user/Images/NEF_100"` |
+| `dataset_root` | Корневая папка, где будут созданы `train/` и `test/` с подпапками `lq_inputs`/`hq_targets` | `"datasets/nef_nafnet_100"` |
+| `resume_path` | Путь для сохранения/загрузки чекпоинта. Может содержать `{name}`. | `"experiments/{name}/checkpoints/resume.pth"` |
+| `pretrain_network_g` (опционально) | Путь к предобученной модели NAFNet (например, SIDD). | `"pretrained/NAFNet-SIDD-width32.pth"` |
+
+```yaml
 path:
-  source_images_dir: "/home/grand/Images/NEF_Test_20"
-  dataset_root: "datasets/nef_nafnet_20"
-  resume_path: "experiments/{name}/checkpoints/resume_nef_nafnet_20.pth"
-  # pretrain_network_g: "pretrained/NAFNet-SIDD-width32.pth"
+  source_images_dir: "/home/grand/Images/NEF_Test_100"
+  dataset_root: "datasets/nef_nafnet_100"
+  resume_path: "experiments/{name}/checkpoints/resume_nef_nafnet_100.pth"
+  pretrain_network_g: "pretrained/NAFNet-SIDD-width32.pth"   # опционально
+```
 
+---
+
+## Секция `datasets`
+
+Параметры датасета и загрузчика.
+
+### `datasets.train`
+
+| Параметр | Описание | Значение по умолчанию |
+|----------|----------|----------------------|
+| `gt_size` | Размер квадратного HQ‑патча (эталон, в пикселях) | 256 |
+| `lq_size` | Размер квадратного LQ‑патча (упакованный RGGB, 4 канала). Должен удовлетворять `gt_size = upscale_factor * lq_size`. | 128 |
+| `batch_size_per_gpu` | Размер батча на одну GPU | 2 |
+| `num_worker_per_gpu` | Количество процессов для загрузки данных | 4 |
+| `use_flip` | Включить горизонтальные/вертикальные отражения (безопасно для Bayer) | false |
+| `use_rot` | Включить повороты на 90° (обычно **false**, т.к. нарушают RGGB) | false |
+| `auto_resume` | Автоматически продолжать обучение с последнего чекпоинта | true |
+
+**Примечание:** `upscale_factor` в этой секции **устарел** и игнорируется. Используйте единый `network_g.upscale_factor`.
+
+```yaml
+datasets:
+  train:
+    gt_size: 512
+    lq_size: 128
+    batch_size_per_gpu: 2
+    num_worker_per_gpu: 2
+    use_flip: true
+    use_rot: false
+    auto_resume: true
+```
+
+---
+
+## Секция `process_data`
+
+Моделирование физической деградации при генерации LQ из HQ.
+
+| Параметр | Описание | Значение по умолчанию |
+|----------|----------|----------------------|
+| `downscale_factor` | Оптическое уменьшение разрешения перед наложением маски Байера. Общее сжатие = `downscale_factor × 2`. | 2 |
+| `noise.add` | Добавлять шум? | false |
+| `noise.snr_db` | Отношение сигнал/шум в децибелах | 30 |
+| `noise.correlated` | Коррелированный шум (свёртка с PSF) | false |
+| `noise.psf_sigma` | Сигма гауссова ядра PSF для размытия и коррелированного шума | 1.5 |
+
+```yaml
 process_data:
-  downscale_factor: 4
+  downscale_factor: 2
   noise:
     add: true
     snr_db: 20
     correlated: true
     psf_sigma: 0.5
+```
 
+---
+
+## Секция `network_g`
+
+Архитектура модели NAFNet и обёртки JDSR.
+
+| Параметр | Описание | Значение по умолчанию |
+|----------|----------|----------------------|
+| `num_in_ch` | Число входных каналов (для RGGB всегда 4) | 4 |
+| `num_out_ch` | Число выходных каналов (RGB) | 3 |
+| `width` | Базовая ширина каналов NAFNet | 32 |
+| `upscale_factor` | **Единый источник истины** – коэффициент масштабирования (должен быть равен `downscale_factor × 2`). | 4 |
+| `middle_blk_num` | Количество блоков в центральной части | 12 |
+| `enc_blk_nums` | Количество блоков на уровнях энкодера | [2,2,4,8] |
+| `dec_blk_nums` | Количество блоков на уровнях декодера | [2,2,2,2] |
+
+```yaml
 network_g:
-  type: NAFNet
-  arch_file: "modules/NAFNet/basicsr/models/archs/NAFNet_arch.py"
-  class_name: "NAFNet"
   num_in_ch: 4
   num_out_ch: 3
-  width: 32
-  enc_blk_nums: [2, 2, 4, 8]
+  width: 64
+  upscale_factor: 4
   middle_blk_num: 12
+  enc_blk_nums: [2, 2, 4, 8]
   dec_blk_nums: [2, 2, 2, 2]
-  upscale_factor: 2   # для downscale_factor=4 должно быть 8, но в данном конфиге 2 (пример)
+```
 
-datasets:
-  train:
-    type: CustomNEFPairDataset
-    batch_size_per_gpu: 16
-    num_worker_per_gpu: 4
-    auto_resume: true
-    gt_size: 256
-    lq_size: 128
+---
 
+## Секция `train`
+
+Гиперпараметры оптимизации и расписания.
+
+| Параметр | Описание | Пример |
+|----------|----------|--------|
+| `validation_freq` | Частота валидации (эпохи) | 1 |
+| `save_checkpoint_epoch` | Частота сохранения чекпоинтов (эпохи) | 10 |
+| `num_epochs` | Общее число эпох | 300 |
+| `optim_g.type` | Тип оптимизатора (AdamW) | `AdamW` |
+| `optim_g.lr` | Начальная скорость обучения | 1e-4 |
+| `optim_g.weight_decay` | L2‑регуляризация | 1e-4 |
+| `optim_g.betas` | Параметры Adam | [0.9, 0.999] |
+| `scheduler.type` | Тип планировщика | `MultiStepLR` |
+| `scheduler.milestones` | Эпохи снижения LR | [150, 225] |
+| `scheduler.gamma` | Коэффициент уменьшения LR | 0.1 |
+
+```yaml
 train:
   validation_freq: 1
-  save_checkpoint_epoch: 5
-  num_epochs: 200
+  save_checkpoint_epoch: 10
+  num_epochs: 300
   optim_g:
-    lr: 1e-3
+    type: AdamW
+    lr: 1e-4
     weight_decay: 1e-4
     betas: [0.9, 0.999]
   scheduler:
-    eta_min: 1e-7
+    type: MultiStepLR
+    milestones: [150, 225]
+    gamma: 0.1
+```
 
+---
+
+## Секция `losses`
+
+Функция потерь.
+
+| Параметр | Описание | По умолчанию |
+|----------|----------|-------------|
+| `type` | Тип: `"l1"` или `"combined"` | `l1` |
+| `l1_weight` | Вес L1‑компоненты | 1.0 |
+| `ffl_weight` | Вес FFL‑компоненты | 0.2 |
+| `ffl_start_epoch` | С какой эпохи включать FFL (прогрев) | 0 |
+| `ffl_type` | `"linear"` или `"log"` | `log` |
+| `ffl_alpha` | Фокальный параметр | 1.0 |
+| `ffl_log_factor` | Коэффициент сжатия для логарифмической версии | 100.0 |
+
+```yaml
 losses:
-  type: "combined"
-  l1_weight: 1.0
-  ffl_weight: 0.5
-  ffl_alpha: 1.0
+  type: combined
+  l1_weight: 1.5
+  ffl_weight: 0.2
+  ffl_start_epoch: 20
+  ffl_alpha: 1.5
   ffl_log_factor: 100.0
-  ffl_type: "log"
+  ffl_type: log
+```
 
+---
+
+## Секция `logger`
+
+Настройки логирования.
+
+| Параметр | Описание | По умолчанию |
+|----------|----------|-------------|
+| `use_tb_logger` | Включить TensorBoard | false |
+| `log_csv` | Записывать `train_metrics.csv` | false |
+| `csv_file_name` | Имя CSV‑файла для обучения | `train_metrics.csv` |
+| `log_file_name` | Имя текстового лог‑файла | `train_progress.log` |
+| `file_log_freq` | Частота записи в текстовый лог (шаги) | 20 |
+| `include_in_console` | Какие поля выводить на экран | см. пример |
+| `include_in_file_log` | Какие поля записывать в `train_progress.log` | см. пример |
+
+```yaml
 logger:
-  print_freq: 2
   use_tb_logger: true
-  log_file_name: "train_progress.log"
-  csv_file_name: "train_metrics.csv"
   log_csv: true
-  file_log_freq: 1
-  log_loss_components: true
+  csv_file_name: "train_metrics.csv"
+  log_file_name: "train_progress.log"
+  file_log_freq: 50
   include_in_console:
     loss: true
     psnr: true
     vram: true
-    learning_rate: false
+    learning_rate: true
   include_in_file_log:
     loss: true
     psnr: true
@@ -219,26 +225,70 @@ logger:
     tv_ratio: true
     vram_usage: true
     log_ssim: true
+```
 
+---
+
+## Секция `visuals_logger`
+
+Настройки визуального контроля.
+
+| Параметр | Описание | По умолчанию |
+|----------|----------|-------------|
+| `output_dir` | Папка для сохранения превью | `"experiments/{name}/debug_visuals"` |
+| `lq_preview_name` | Имя файла для LQ‑превью | `"debug_lq_preview.png"` |
+| `gt_reference_name` | Имя файла для HQ‑превью | `"debug_gt_reference.png"` |
+
+```yaml
 visuals_logger:
   output_dir: "experiments/{name}/debug_visuals"
   lq_preview_name: "debug_lq_preview.png"
   gt_reference_name: "debug_gt_reference.png"
+```
 
+---
+
+## Секция `pipeline_logger`
+
+Общий лог-файл конвейера.
+
+| Параметр | Описание | По умолчанию |
+|----------|----------|-------------|
+| `log_file` | Путь к текстовому логу | `"experiments/{name}/pipeline.log"` |
+
+```yaml
 pipeline_logger:
   log_file: "experiments/{name}/pipeline.log"
 ```
 
 ---
 
-## Важные замечания
+## Дополнительные примечания
 
-- **Соотношение размеров патчей:** `gt_size` **обязан** быть равен `upscale_factor * lq_size`. Это требование модели (PixelShuffle увеличивает разрешение в `upscale_factor` раз).
-- **Согласованность деградации и апскейла:** Если `process_data.downscale_factor = 4`, то для полного восстановления исходного масштаба рекомендуется `network_g.upscale_factor = 8` (сжатие в 4 раза + упаковка Байера даёт суммарное уменьшение в 8 раз). В приведённом примере `upscale_factor = 2` – это классический случай демозаики без дополнительного сжатия.
-- **Воспроизводимость:** Фиксированный `manual_seed` гарантирует одинаковое разбиение train/test и аугментации.
-- **Предобученные веса:** Строка `pretrain_network_g` закомментирована – при необходимости раскомментируйте и укажите путь к `.pth` файлу (например, `NAFNet-SIDD-width32.pth`).
+1. **Обязательные параметры**  
+   - `network_g.upscale_factor` – проверяется в `config.py`. При отсутствии выбрасывается исключение.
+   - `name` – используется для подстановки в пути.
+
+2. **Устаревшие параметры (игнорируются)**  
+   - `datasets.train.upscale_factor` – при наличии выводится предупреждение.
+
+3. **Взаимосвязи**  
+   - `gt_size == network_g.upscale_factor * lq_size` – проверяется датасетом.
+   - `network_g.upscale_factor == process_data.downscale_factor × 2` – рекомендуется для согласованности масштаба.
+
+4. **Типы данных**  
+   - `!!float` – явное указание числа с плавающей точкой (например, `lr: !!float 1e-4`).
+
+5. **Подстановка `{name}`**  
+   Поддерживается в `output_dir`, `log_file`, `resume_path`, `csv_file_name`, `log_file_name`.
 
 ---
 
-**Дата последнего обновления:** 2026-06-06  
-**Версия:** 2.0 (добавлен `upscale_factor`, исправлено соотношение размеров, актуализирован пример)
+## Пример полного конфигурационного файла
+
+См. `configs/RAW_NAFNet_Final_100.yml`.
+
+---
+
+**Дата последнего обновления:** 2026-06-07  
+**Версия:** 2.0 (соответствует коду после рефакторинга)
