@@ -202,13 +202,12 @@ def compute_metrics(out, target, criterion, loss_type, current_epoch=0):
     # 3. Собираем монолитный админский словарь метрик для run_training.py
     metrics = {
         'total_loss': total_loss,
-        'l1_loss': l1_val,
-        'ffl_loss': ffl_val,
+        'l1_val': l1_val,      # было 'l1_loss'
+        'ffl_val': ffl_val,    # было 'ffl_loss'
         'psnr': psnr_val
     }
     
     return metrics
-
 
 
 def cleanup_experiment(opt, save_dir, logger):
