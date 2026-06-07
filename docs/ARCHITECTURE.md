@@ -5,7 +5,7 @@
 
 В данном документе описывается структура кода, потоки данных и взаимодействие модулей. Он предназначен для быстрого понимания того, какой файл за что отвечает, как тензоры преобразуются от RAW‑входа до RGB‑выхода и как устроен цикл обучения.
 
-> **Навигация:** Для псевдокода алгоритмов см. [ALGORITHM.md](ALGORITHM.md). Для конфигурации – [CONFIG.md](CONFIG.md) (если есть). Для запуска обучения – `run_training.py -opt config.yml`.
+> **Навигация:** Для псевдокода алгоритмов см. [ALGORITHM.md](ALGORITHM.md). Для конфигурации – [CONFIG.md](CONFIG.md). Для запуска обучения – `run_training.py -opt config.yml`.
 
 ---
 
@@ -30,7 +30,7 @@
 
 | Файл | Отвечает за | Используется в |
 |------|-------------|----------------|
-| `config.py` | Парсинг аргументов командной строки, загрузка YAML‑конфига, подстановка `{name}` в пути, проверка обязательности `network_g.upscale_factor`, предупреждение об устаревшем `datasets.train.upscale_factor`. | Все скрипты |
+| `config.py` | Парсинг аргументов, загрузка YAML‑конфига, подстановка `{name}`, проверка обязательности `network_g.upscale_factor`, предупреждение об устаревшем `datasets.train.upscale_factor`. | Все скрипты |
 | `logger.py` | Настройка двухпоточного логгирования (консоль + файл). | Все скрипты |
 | `device.py` | Определение устройства (CUDA/CPU). | `run_pipeline.py`, `run_training.py` |
 | `pipeline_prepare.py` | Проверка/очистка датасета, вызов генерации (`process_source_images`). | `run_pipeline.py` |
@@ -38,9 +38,9 @@
 | `pipeline_generation_core.py` | **Ядро деградации:** оптическое уменьшение (`downscale_factor`), PSF‑размытие, маска Байера, добавление шума, упаковка в 4 канала. | `pipeline_generation_io.py`, `video_degradation.py` |
 | `degradation_ops.py` | Низкоуровневые операции: создание PSF‑ядра, свёртка, добавление шума (коррелированного/некоррелированного), маска Байера, извлечение субканалов. | `pipeline_generation_core.py` |
 | `training_dataset_nef.py` | Класс `CustomNEFPairDataset` – загрузка пар LQ/HQ, случайный кроп, синхронные аугментации (flip, rot90 отключены). Читает `upscale_factor` из `network_g`. | `run_training.py` (через `training_utils.create_train_loader`) |
-| `model_utils.py` | Создание NAFNet с обёрткой `NAFNetDemosaicSuperResolutionWrapper`, загрузка предобученных весов (частичный перенос с `strict=False`). `upscale_factor` берётся из `network_g`. | `run_pipeline.py`, `run_training.py` |
+| `model_utils.py` | Создание NAFNet с обёрткой `NAFNetDemosaicSuperResolutionWrapper`. **Новая правильная архитектура:** NAFNet работает в низком разрешении, `PixelShuffle` после сети, убраны лишние конвертации. | `run_pipeline.py`, `run_training.py` |
 | `training_utils.py` | Вспомогательные функции: `create_train_loader`, `create_optimizer_and_scheduler`, `compute_metrics` (с передачей `current_epoch`), `log_progress`, `cleanup_experiment`. | `run_training.py` |
-| `training_losses.py` | Комбинированная потеря `CombinedLoss` (L1 + FFL). Поддерживает `ffl_start_epoch` (прогрев: до указанной эпохи FFL отключён). | `run_training.py` |
+| `training_losses.py` | Комбинированная потеря `CombinedLoss` (L1 + FFL). Поддерживает `ffl_start_epoch` (прогрев). | `run_training.py` |
 | `training_logger.py` | Класс `TrainingLogger` – логирование в CSV (`train_metrics.csv`, `val_metrics.csv`), текстовый файл, TensorBoard. | `run_training.py` |
 | `training_validator.py` | Класс `VisualValidator` – валидация на тестовой выборке (центральный кроп, инференс, расчёт SSIM **и PSNR**), сохранение предсказаний. Использует `upscale_factor` из `network_g`. | `run_training.py` |
 | `training_checkpoint.py` | Сохранение и загрузка чекпоинтов с поддержкой аварийного возобновления (флаг `is_emergency`). | `run_training.py` |
@@ -101,15 +101,15 @@
 
 ### 3.3. Прямой проход модели (`NAFNetDemosaicSuperResolutionWrapper`)
 
-Модель состоит из:
-1. **Базовый NAFNet** (вход 4 канала, выход 4 канала, без изменения пространственного размера).
-2. **Upsample block**: `Conv2d(4, out_ch * upscale_factor², 3,1) + PixelShuffle(upscale_factor)`.
-3. **Адаптер каналов** для совместимости с предобученными весами SIDD (4→3 и обратно).
+**Новая правильная архитектура (после рефакторинга):**
 
-**Поток:**  
-`lq` (4, lq_size, lq_size) → NAFNet → `mid` (4, lq_size, lq_size) → Upsample block → `out` (3, lq_size*upscale, lq_size*upscale).
+```
+(B, 4, lq_size, lq_size) → NAFNet → (B, 4, lq_size, lq_size) → Conv2d(4, out_ch * upscale_factor²) + PixelShuffle → (B, 3, gt_size, gt_size)
+```
 
-Для `upscale_factor=4` и `lq_size=128` выход будет `(3, 512, 512)`, что соответствует `gt_size`.
+- **Базовый NAFNet** работает в **низком разрешении** (например, 128×128) с 4 каналами (вход и выход).
+- **Блок апскейла:** свёртка, увеличивающая число каналов до `out_channels * upscale_factor²`, и `PixelShuffle`, перестраивающий их в RGB высокого разрешения.
+- **Убраны** `to_nafnet_ch` и `post_process` – больше нет лишних конвертаций 3↔4 канала.
 
 **Выход сети:** `pred` (B, 3, gt_size, gt_size) в диапазоне `[0,1]` (без сигмоиды, loss сам ограничивает).
 
@@ -185,7 +185,7 @@ for epoch in range(start_epoch, num_epochs):
 5. Сравнение:
    - **SSIM** через `skimage.metrics.structural_similarity` (data_range=255).
    - **PSNR** через собственный расчёт MSE и формулу: `20 * log10(255 / sqrt(MSE))`.
-6. Результаты сохраняются в `val_metrics.csv` (колонки `epoch`, `ssim`, `psnr`), средние значения выводятся в лог.
+6. Результаты сохраняются в `val_metrics.csv` (колонки `epoch`, `psnr`, `ssim`), средние значения выводятся в лог.
 
 ---
 
@@ -197,7 +197,7 @@ for epoch in range(start_epoch, num_epochs):
 | PSF‑ядро, свёртка, шум | `degradation_ops.py` → `create_psf_kernel`, `add_correlated_noise_float`, `apply_bayer_mask_float` |
 | Упаковка Байера в 4 канала | `degradation_ops.py` → `extract_bayer_subchannels` |
 | Загрузка пар LQ/HQ с кропом и аугментациями | `training_dataset_nef.py` → `CustomNEFPairDataset` |
-| Архитектура NAFNet + PixelShuffle | `model_utils.py` → `NAFNetDemosaicSuperResolutionWrapper`, `create_nafnet_model` |
+| Архитектура NAFNet + PixelShuffle (новая) | `model_utils.py` → `NAFNetDemosaicSuperResolutionWrapper`, `create_nafnet_model` |
 | Комбинированная потеря (L1+FFL) с прогревом | `training_losses.py` → `CombinedLoss`, `FocalFrequencyLoss`, `FocalFrequencyLossLog` |
 | Цикл обучения | `run_training.py` → `main` |
 | Логирование метрик (CSV, TensorBoard) | `training_logger.py` → `TrainingLogger` |
@@ -249,21 +249,11 @@ for epoch in range(start_epoch, num_epochs):
 - **Физическую корректность** – деградация соответствует реальному тракту (оптическое уменьшение, PSF, Байер, коррелированный шум).
 - **Стабильность обучения** – клиппинг градиентов, прогрев FFL, аварийное возобновление.
 - **Полноту метрик** – логируются train loss, PSNR, LR, градиенты, TV ratio, VRAM; validation – SSIM и PSNR.
+- **Эффективность по памяти** – NAFNet работает в низком разрешении (`lq_size`), что позволяет использовать большие батчи.
 
 Для детального изучения каждого компонента используйте ссылки на соответствующие файлы в таблице выше.
 
 ---
 
 **Дата последнего обновления:** 2026-06-07  
-**Версия:** 2.0 (полное соответствие коду)
-```
-
-Этот документ теперь отражает все исправления, включая:
-- Единый `upscale_factor` из `network_g`.
-- Использование `downscale_factor` в генерации.
-- Прогрев FFL (`ffl_start_epoch`).
-- Валидатор, возвращающий PSNR.
-- Клиппинг градиентов.
-- Удаление устаревшего датасета.
-- Правильные пути в `run_pipeline.py`.
-- Импорт `math` и т.д.
+**Версия:** 3.0 (полное соответствие коду после рефакторинга)

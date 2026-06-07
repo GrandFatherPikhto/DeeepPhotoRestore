@@ -40,7 +40,7 @@ plots:
       x: step
       y: psnr
     smoothing: 0.95
-    y_lim: [3, 35]
+    y_lim: [3, 45]
     y_label: "PSNR (dB)"
     save: psnr_curve.png
 
