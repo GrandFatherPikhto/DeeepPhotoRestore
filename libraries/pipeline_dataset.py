@@ -72,5 +72,5 @@ def ensure_dataset_ready(config, opt_path, clean_dataset=False):
 
 def create_restoration_dataset(config, is_train=True):
     """Создаёт и возвращает экземпляр RestorationDataset."""
-    from libraries.pipeline_data import RestorationDataset
+    from libraries.old.pipeline_data import RestorationDataset
     return RestorationDataset(config, is_train=is_train)

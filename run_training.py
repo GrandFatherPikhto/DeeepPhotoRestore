@@ -104,7 +104,7 @@ def main():
                 
                 # 2. Отправка сопряжённых метрик в твой центральный логгер
                 # Метод внутри себя запишет данные в val_metrics.csv и отправит в TensorBoard!
-                train_logger.log_validation_metrics(epoch, epoch_ssim, epoch_psnr)
+                train_logger.log_validation_metrics(epoch, epoch_ssim, epoch_psnr)                
  
 
             if (epoch + 1) % save_every == 0:

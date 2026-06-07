@@ -154,10 +154,14 @@ class TrainingLogger:
         file_exists = os.path.exists(val_csv_path)
         
         # 1. Пишем в TensorBoard (проверяем наличие твоего SummaryWriter)
-        if hasattr(self, 'tb_writer') and self.tb_writer:
-            self.tb_writer.add_scalar('val/mean_psnr', psnr_val, epoch)
-            self.tb_writer.add_scalar('val/mean_ssim', ssim, epoch)
-            
+        # if hasattr(self, 'tb_writer') and self.tb_writer:
+        #     self.tb_writer.add_scalar('val/mean_psnr', psnr_val, epoch)
+        #     self.tb_writer.add_scalar('val/mean_ssim', ssim, epoch)
+
+        if self.use_tb and self.tb_logger is not None:
+            self.tb_logger.add_scalar('val/mean_psnr', psnr_val, epoch)
+            self.tb_logger.add_scalar('val/mean_ssim', ssim, epoch)
+
         # 2. Пишем в CSV-файл с правильной геометрией колонок под скрипт графиков
         with open(val_csv_path, 'a', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)

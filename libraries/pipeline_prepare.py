@@ -41,7 +41,7 @@ def ensure_dataset_ready(config, clean_dataset=False):
     Если clean_dataset=True – сначала очищает train/test.
     Если датасет пуст – запускает генерацию напрямую.
     """
-    dataset_root = config.get("dataset_root", "datasets/nef_nafnet")
+    dataset_root = config.get('path', {}).get('dataset_root', 'datasets/nef_nafnet')
     logger.info(f"Работа с датасетом, корень: {dataset_root}")
 
     if clean_dataset:
@@ -50,7 +50,6 @@ def ensure_dataset_ready(config, clean_dataset=False):
 
     if is_dataset_empty(dataset_root):
         logger.info("Датасет пуст или не найден. Запуск генерации...")
-        # Устанавливаем флаг очистки для генерации (чтобы она не дублировала очистку)
         config['clean_generation'] = clean_dataset
         process_source_images(config)
         logger.info("Генерация датасета завершена")
