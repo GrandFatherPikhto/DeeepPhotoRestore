@@ -7,9 +7,9 @@ manual_seed: 42
 
 # --- ПУТИ ---
 paths:
-  input_tiff: "datasets/nef_nafnet_100_01/test/lq_inputs/DSC_0573_bayer.tiff"
-  gt_png: "datasets/nef_nafnet_100_01/test/hq_targets/DSC_0573.png"   # эталон (опционально)
-  output_dir: "experiments/pretrained_100_01/SIDD32_20/results"
+  input_tiff: "datasets/NAFNet-100-02/test/lq_inputs/DSC_5641_bayer.tiff"
+  gt_png: "datasets/NAFNet-100-02/test/hq_targets/DSC_5641.png"   # эталон (опционально)
+  output_dir: "experiments/pretrained/SIDD32_100_02/results"
   checkpoint: "pretrained/NAFNet-SIDD-width32.pth"
 
 # --- АРХИТЕКТУРА СЕТИ (должна совпадать с загружаемой моделью) ---
