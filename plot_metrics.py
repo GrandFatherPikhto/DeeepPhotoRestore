@@ -6,11 +6,15 @@ import argparse
 import yaml
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib
 
 from libraries.plot_utils import (
     smooth_exponential, load_csv_data, load_log_data, substitute_name
 )
+
 from libraries.plot_functions import plot_line, plot_comparison, plot_multi_line
+
+matplotlib.rcParams['agg.path.chunksize'] = 20000
 
 def main():
     parser = argparse.ArgumentParser()

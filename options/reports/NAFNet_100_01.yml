@@ -1,0 +1,88 @@
+pairs:
+- img1: experiments/NAFNet-100-01/val_predictions/epoch_0_DSC_0573.png
+  img2: experiments/NAFNet-100-01/val_predictions/epoch_865_DSC_0573.png
+  output: experiments/NAFNet-100-01/report/epochs/epoch_0_865_DSC_0573.png
+  dsc_num: '0573'
+  type: epochs
+- img1: datasets/nef_nafnet_100_01/test/hq_targets/DSC_0573.png
+  img2: experiments/NAFNet-100-01/lq_preview/DSC_0573_bayer.png
+  output: experiments/NAFNet-100-01/report/source/hq_lq_DSC_0573.png
+  dsc_num: '0573'
+  type: source
+- img1: experiments/NAFNet-100-01/lq_preview/DSC_0573_bayer.png
+  img2: experiments/NAFNet-100-01/val_predictions/epoch_865_DSC_0573.png
+  output: experiments/NAFNet-100-01/report/repair/repair_DSC_0573.png
+  dsc_num: '0573'
+  type: repair
+- img1: experiments/NAFNet-100-01/val_predictions/epoch_0_DSC_0585.png
+  img2: experiments/NAFNet-100-01/val_predictions/epoch_865_DSC_0585.png
+  output: experiments/NAFNet-100-01/report/epochs/epoch_0_865_DSC_0585.png
+  dsc_num: 0585
+  type: epochs
+- img1: datasets/nef_nafnet_100_01/test/hq_targets/DSC_0585.png
+  img2: experiments/NAFNet-100-01/lq_preview/DSC_0585_bayer.png
+  output: experiments/NAFNet-100-01/report/source/hq_lq_DSC_0585.png
+  dsc_num: 0585
+  type: source
+- img1: experiments/NAFNet-100-01/lq_preview/DSC_0585_bayer.png
+  img2: experiments/NAFNet-100-01/val_predictions/epoch_865_DSC_0585.png
+  output: experiments/NAFNet-100-01/report/repair/repair_DSC_0585.png
+  dsc_num: 0585
+  type: repair
+- img1: experiments/NAFNet-100-01/val_predictions/epoch_0_DSC_0590.png
+  img2: experiments/NAFNet-100-01/val_predictions/epoch_865_DSC_0590.png
+  output: experiments/NAFNet-100-01/report/epochs/epoch_0_865_DSC_0590.png
+  dsc_num: 0590
+  type: epochs
+- img1: datasets/nef_nafnet_100_01/test/hq_targets/DSC_0590.png
+  img2: experiments/NAFNet-100-01/lq_preview/DSC_0590_bayer.png
+  output: experiments/NAFNet-100-01/report/source/hq_lq_DSC_0590.png
+  dsc_num: 0590
+  type: source
+- img1: experiments/NAFNet-100-01/lq_preview/DSC_0590_bayer.png
+  img2: experiments/NAFNet-100-01/val_predictions/epoch_865_DSC_0590.png
+  output: experiments/NAFNet-100-01/report/repair/repair_DSC_0590.png
+  dsc_num: 0590
+  type: repair
+- img1: experiments/NAFNet-100-01/val_predictions/epoch_0_DSC_5638.png
+  img2: experiments/NAFNet-100-01/val_predictions/epoch_865_DSC_5638.png
+  output: experiments/NAFNet-100-01/report/epochs/epoch_0_865_DSC_5638.png
+  dsc_num: '5638'
+  type: epochs
+- img1: datasets/nef_nafnet_100_01/test/hq_targets/DSC_5638.png
+  img2: experiments/NAFNet-100-01/lq_preview/DSC_5638_bayer.png
+  output: experiments/NAFNet-100-01/report/source/hq_lq_DSC_5638.png
+  dsc_num: '5638'
+  type: source
+- img1: experiments/NAFNet-100-01/lq_preview/DSC_5638_bayer.png
+  img2: experiments/NAFNet-100-01/val_predictions/epoch_865_DSC_5638.png
+  output: experiments/NAFNet-100-01/report/repair/repair_DSC_5638.png
+  dsc_num: '5638'
+  type: repair
+- img1: experiments/NAFNet-100-01/val_predictions/epoch_0_DSC_5641.png
+  img2: experiments/NAFNet-100-01/val_predictions/epoch_865_DSC_5641.png
+  output: experiments/NAFNet-100-01/report/epochs/epoch_0_865_DSC_5641.png
+  dsc_num: '5641'
+  type: epochs
+- img1: datasets/nef_nafnet_100_01/test/hq_targets/DSC_5641.png
+  img2: experiments/NAFNet-100-01/lq_preview/DSC_5641_bayer.png
+  output: experiments/NAFNet-100-01/report/source/hq_lq_DSC_5641.png
+  dsc_num: '5641'
+  type: source
+- img1: experiments/NAFNet-100-01/lq_preview/DSC_5641_bayer.png
+  img2: experiments/NAFNet-100-01/val_predictions/epoch_865_DSC_5641.png
+  output: experiments/NAFNet-100-01/report/repair/repair_DSC_5641.png
+  dsc_num: '5641'
+  type: repair
+image_size: [512, 512]
+spacing: 10
+background_color: [255, 255, 255]
+border:
+  enabled: true
+  color: [0, 0, 255]
+  thickness: 1
+metrics:
+  enabled: true
+  list: [psnr, ssim]
+  position: top_left
+  color: [255, 255, 255]

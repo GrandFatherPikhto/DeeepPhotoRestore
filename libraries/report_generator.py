@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import os
 import sys
 import numpy as np
 from pathlib import Path
@@ -201,12 +202,12 @@ def process_pair(img1_path, img2_path, output_path, config, hq_target_path=None)
     metrics_list = getattr(config, 'metrics_list', ['psnr', 'ssim'])
     
     # Считаем метрики только если они включены и нам передан эталонный HQ-кадр
-    if metrics_enabled and metrics_list and hq_target_path:
-        # Для пары эпох (start->finish) оцениваем качество финишной эпохи (img2_path) относительно HQ
-        # Для пары source (hq->lq) считать метрики бессмысленно, функция compute_metrics это поймет
-        if "epochs" in str(output_path):
-            text_score = compute_metrics(img2_path, hq_target_path, metrics_list)
-            result = draw_text_on_image(result, text_score, config)
+    if metrics_enabled and metrics_list and hq_target_path:        
+        output_path_str = str(output_path)
+        if "epochs" in output_path_str or "repair" in output_path_str:
+            if hq_target_path and os.path.exists(hq_target_path):
+                text_score = compute_metrics(img2_path, hq_target_path, metrics_list)
+                result = draw_text_on_image(result, text_score, config)
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     result.save(output_path)

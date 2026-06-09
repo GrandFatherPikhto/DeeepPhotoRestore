@@ -105,9 +105,11 @@ def generate_report_yaml(config, output_path):
     report_dir = os.path.join(config.experiment_dir_str, "report")
     epochs_out_dir = os.path.join(report_dir, "epochs")
     source_out_dir = os.path.join(report_dir, "source")
+    repair_out_dir = os.path.join(report_dir, "repair")   # новая папка
 
     os.makedirs(epochs_out_dir, exist_ok=True)
     os.makedirs(source_out_dir, exist_ok=True)
+    os.makedirs(repair_out_dir, exist_ok=True)
 
     for i, dsc_num in enumerate(config.dsc_numbers):
         # 1. Пары Эпох
@@ -116,16 +118,31 @@ def generate_report_yaml(config, output_path):
             "img1": config.start_epoch_previews[i],
             "img2": config.finish_epoch_previews[i],
             "output": os.path.join(epochs_out_dir, epoch_img_name),
+            "dsc_num": dsc_num,          # добавили номер
+            "type": "epochs"             # опционально
         })
-        # 2. Пары Исходников
+
+        # 2. Пары Исходников (HQ vs LQ)
         source_img_name = f"hq_lq_DSC_{dsc_num}.png"
         report_data["pairs"].append({
             "img1": config.hq_targets[i],
             "img2": config.lq_previews[i],
             "output": os.path.join(source_out_dir, source_img_name),
+            "dsc_num": dsc_num,
+            "type": "source"
         })
 
-    # Глобальные настройки
+        # 3. Пары Ремонта (LQ vs восстановленное)  ← НОВОЕ
+        repair_img_name = f"repair_DSC_{dsc_num}.png"
+        report_data["pairs"].append({
+            "img1": config.lq_previews[i],                           # исходное LQ (демозаиченное)
+            "img2": config.finish_epoch_previews[i],                 # восстановленное финишной эпохой
+            "output": os.path.join(repair_out_dir, repair_img_name),
+            "dsc_num": dsc_num,
+            "type": "repair"
+        })
+
+    # Глобальные настройки (без изменений)
     report_data["image_size"] = config.image_size
     report_data["spacing"] = config.spacing
     report_data["background_color"] = config.background_color
@@ -134,17 +151,15 @@ def generate_report_yaml(config, output_path):
         "color": config.border_color,
         "thickness": config.border_thickness,
     }
-
-    # === НОВЫЙ БЛОК ДЛЯ МЕТРИК ===
     report_data["metrics"] = {
         "enabled": getattr(config, 'metrics_enabled', True),
         "list": getattr(config, 'metrics_list', ['psnr', 'ssim']),
         "position": getattr(config, 'metrics_position', 'top_left'),
         "color": getattr(config, 'metrics_color', [255, 255, 255])
-    }    
+    }
 
     with open(output_path, "w", encoding="utf-8") as f:
         yaml.dump(report_data, f, Dumper=BlockListDumper, allow_unicode=True, sort_keys=False)
-        
+
     print(f"Конфигурация отчёта сохранена в: {output_path}")
     return report_data["pairs"]

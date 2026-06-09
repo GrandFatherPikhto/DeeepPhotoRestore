@@ -116,15 +116,22 @@ def main():
     pairs_list = cm.generate_report_yaml(config, args.output)
 
     print("\nНачинаем процесс склейки изображений...")
-    # Каждая итерация обрабатывает пару "эпохи" и пару "исходники" поочередно
-    # Индекс кадра dsc_numbers равен i // 2
-    for i, pair in enumerate(pairs_list):
-        dsc_index = i // 2
-        hq_path = config.hq_targets[dsc_index]
-        
-        # Передаем hq_path третьим аргументом
-        ip.process_pair(pair["img1"], pair["img2"], pair["output"], config, hq_target_path=hq_path)
 
+    # Создаём отображение номера DSC -> путь к HQ для быстрого доступа
+    dsc_to_hq = {dsc_num: hq_path for dsc_num, hq_path in zip(config.dsc_numbers, config.hq_targets)}
+
+    for pair in pairs_list:
+        img1 = pair["img1"]
+        img2 = pair["img2"]
+        out = pair["output"]
+        dsc_num = pair.get("dsc_num")
+        if dsc_num is not None:
+            hq_path = dsc_to_hq.get(dsc_num)
+        else:
+            # fallback для старых конфигов (без dsc_num)
+            hq_path = None
+            print(f"Предупреждение: в паре {pair} нет dsc_num, метрики не будут рассчитаны.")
+        ip.process_pair(img1, img2, out, config, hq_target_path=hq_path)
 
     print("\nВсе задачи успешно выполнены!")
 
