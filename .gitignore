@@ -46,6 +46,8 @@ modules/NAFNet/.eggs/
 modules/NAFNet/**/*.eggs/
 modules/NAFNet/basicsr
 
+output
+
 utils
 
 # *zip

@@ -50,6 +50,9 @@
 | `video_utils.py` | Открытие/запись видео, конвертация кадров в тензоры и обратно. | `process_video.py` |
 | `video_degradation.py` | Применение `generate_lq_from_hq` к кадру видео и ресайз до целевого размера. | `process_video.py` |
 | `video_inference.py` | Загрузка модели, цикл покадровой обработки видео. | `process_video.py` |
+| `report_config.py` | Генерация YAML-конфига отчёта: поиск DSC-номеров, путей к эпохам, LQ, HQ, формирование списка пар. | `generate_reports.py` |
+| `report_generator.py` | Склейка двух изображений с масштабированием, рамками, поддержкой RGBA. Расчёт метрик (PSNR, SSIM) и наложение текста. | `generate_reports.py` |
+| `lq_generator.py` | Генерация PNG-превью из 4-канальных TIFF (билинейная демозаика) с кешированием. | `generate_reports.py` |
 
 ---
 
@@ -207,7 +210,6 @@ for epoch in range(start_epoch, num_epochs):
 | Визуальный контроль (превью) | `pipeline_visuals.py` → `run_visual_control`, `bilinear_demosaic_rggb` |
 | Smoke‑тест | `pipeline_smoke.py` → `run_smoke_test` |
 | Инференс на видео | `video_inference.py` → `process_video`, `video_degradation.py` → `degrade_frame` |
-
 ---
 
 ## 7. Рекомендации по навигации в коде
@@ -238,7 +240,6 @@ for epoch in range(start_epoch, num_epochs):
 | После Conv2d+PixelShuffle(4) | (3, 512, 512) | float32 | `128*4 = 512` |
 | Таргет (HQ кроп) | (3, 512, 512) | float32 | загружен из PNG |
 | Лосс (L1 + FFL) | скаляр | float | – |
-
 ---
 
 ## 9. Заключение
