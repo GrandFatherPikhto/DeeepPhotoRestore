@@ -217,7 +217,6 @@ python plot_metrics.py -opt configs/plot_metrics.yml
 - Поддерживает прозрачный фон, рамки, настройку шрифта.
 
 Подробнее см. [REPORT.md](docs/REPORT.md).
-```
 
 ---
 
